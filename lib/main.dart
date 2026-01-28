@@ -1,0 +1,45 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/date_symbol_data_local.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'theme/app_theme.dart';
+import 'providers/app_provider.dart';
+import 'screens/home_screen.dart';
+import 'screens/login_screen.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('es_MX', null);
+
+  await Supabase.initialize(
+    url: 'https://awhuzekjpoapamijlvua.supabase.co',
+    anonKey: 'sb_publishable_G6dRjvRfALqwuYaG1kew7w_Xud8hTgb',
+  );
+
+  runApp(const MecsaOpsApp());
+}
+
+class MecsaOpsApp extends StatelessWidget {
+  const MecsaOpsApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MultiProvider(
+      providers: [ChangeNotifierProvider(create: (_) => AppProvider())],
+      child: MaterialApp(
+        title: 'MecsaOPS Mobile',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        home: Consumer<AppProvider>(
+          builder: (context, provider, _) {
+            // If user is logged in, show Home, else Login
+            if (provider.user != null) {
+              return const HomeScreen();
+            }
+            return const LoginScreen();
+          },
+        ),
+      ),
+    );
+  }
+}
