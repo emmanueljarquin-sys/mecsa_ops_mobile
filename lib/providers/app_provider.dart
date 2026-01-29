@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 
 class AppProvider extends ChangeNotifier {
   int _currentIndex = 0;
@@ -179,12 +181,15 @@ class AppProvider extends ChangeNotifier {
           .map((v) {
             // Handle 'foto' which might be JSONB, String, or Null
             String imageUrl = 'https://via.placeholder.com/150';
-            if (v['foto'] != null) {
-              if (v['foto'] is String &&
-                  v['foto'].toString().startsWith('http')) {
-                imageUrl = v['foto'];
-              } else if (v['foto'] is Map && v['foto']['url'] != null) {
-                imageUrl = v['foto']['url'];
+            final dynamic foto = v['foto'];
+            if (foto != null) {
+              if (foto is String && foto.startsWith('http')) {
+                imageUrl = foto;
+              } else if (foto is Map && foto['url'] != null) {
+                imageUrl = foto['url'];
+              } else if (foto is String) {
+                imageUrl =
+                    "https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/flotilla/$foto";
               }
             }
 
@@ -351,6 +356,114 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  Future<bool> saveVehicleRegister({
+    required String reservaId,
+    required String tipo,
+    required double kilometraje,
+    required double nivelAceite,
+    required double nivelCombustible,
+    required String estadoPintura,
+    required String estadoLlantas,
+    required String estadoInteriores,
+    required bool poseeKit,
+    required bool poseeRefraccion,
+    required bool poseeCompass,
+    required Map<String, dynamic> localPhotos, // Map of key -> File path
+  }) async {
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      if (user == null) throw "No autenticado";
+      if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
+      if (currentEmployeeId == null) throw "No se encontró el ID de empleado";
+
+      // 1. Upload photos first
+      final Map<String, String> photoUrls = {};
+      for (var entry in localPhotos.entries) {
+        if (entry.value != null) {
+          final url = await _uploadRegisterPhoto(
+            entry.value,
+            entry.key,
+            reservaId,
+          );
+          if (url != null) photoUrls["foto_${entry.key}"] = url;
+        }
+      }
+
+      // 2. Insert record
+      // Use reservaId directly as UUID string
+      final Map<String, dynamic> data = {
+        'reserva_id': reservaId,
+        'empleado_id': currentEmployeeId,
+        'tipo': tipo,
+        'kilometraje': kilometraje,
+        'nivel_aceite': nivelAceite,
+        'nivel_combustible': nivelCombustible,
+        'estado_pintura': estadoPintura,
+        'estado_llantas': estadoLlantas,
+        'estado_interiores': estadoInteriores,
+        'posee_kit': poseeKit,
+        'posee_refraccion': poseeRefraccion,
+        'posee_compass': poseeCompass,
+        'ubicacion': '',
+        ...photoUrls,
+      };
+
+      // 2.5 Get current location if possible
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+        data['ubicacion'] = "${pos.latitude},${pos.longitude}";
+      } catch (e) {
+        debugPrint("Could not get registration location: $e");
+      }
+
+      await _supabase
+          .schema('flotilla')
+          .from('registros_vehiculos')
+          .insert(data);
+
+      // Refresh data
+      await fetchData();
+      return true;
+    } catch (e) {
+      debugPrint("Error saving vehicle register: $e");
+      errorMessage = "Error al guardar registro: $e";
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> _uploadRegisterPhoto(
+    dynamic fileSource,
+    String name,
+    String reservaId,
+  ) async {
+    try {
+      final fileName =
+          "register_${reservaId}_${name}_${DateTime.now().millisecondsSinceEpoch}.jpg";
+      final path = "registros/$fileName";
+
+      final File file = fileSource is File
+          ? fileSource
+          : File(fileSource.toString());
+
+      await _supabase.storage
+          .from('fotos_registro_vehiculos')
+          .upload(path, file);
+
+      return fileName;
+    } catch (e) {
+      debugPrint("Error uploading photo $name: $e");
+      // Rethrow to let saveVehicleRegister catch it and abort insert if critical
+      throw "Error subiendo foto $name: $e";
+    }
+  }
+
   String _mapStatus(String? dbStatus) {
     if (dbStatus == null || dbStatus == 'EMPTY') return 'available';
     final s = dbStatus.toLowerCase();
@@ -361,5 +474,24 @@ class AppProvider extends ChangeNotifier {
       return 'occupied';
 
     return 'maintenance';
+  }
+
+  // --- Trip Tracking Methods ---
+  final Map<String, double> _activeTripDistances =
+      {}; // reservaId -> distanceInKm
+
+  void updateTripDistance(String reservaId, double km) {
+    _activeTripDistances[reservaId] =
+        (_activeTripDistances[reservaId] ?? 0.0) + km;
+    notifyListeners();
+  }
+
+  double getTripDistance(String reservaId) {
+    return _activeTripDistances[reservaId] ?? 0.0;
+  }
+
+  void clearTripDistance(String reservaId) {
+    _activeTripDistances.remove(reservaId);
+    notifyListeners();
   }
 }

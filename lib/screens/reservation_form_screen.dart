@@ -204,15 +204,48 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   prefixIcon: const Icon(Icons.map, color: Colors.blue),
-                  suffixIcon: const Icon(
-                    Icons.touch_app,
-                    size: 20,
-                    color: Colors.grey,
-                  ),
+                  suffixIcon: _ubicacionController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.close, size: 20),
+                          onPressed: () {
+                            setState(() {
+                              _ubicacionController.clear();
+                            });
+                          },
+                        )
+                      : const Icon(
+                          Icons.touch_app,
+                          size: 20,
+                          color: Colors.grey,
+                        ),
                   filled: true,
                   fillColor: Colors.grey[50],
                 ),
               ),
+              if (_ubicacionController.text.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, left: 4),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.check_circle,
+                        color: Colors.green,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          "Ubicación cargada: ${_ubicacionController.text}",
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 32),
 
               SizedBox(

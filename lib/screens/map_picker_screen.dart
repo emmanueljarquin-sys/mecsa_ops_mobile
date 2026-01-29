@@ -3,9 +3,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
+import 'package:geolocator/geolocator.dart';
 
 // NOTA: El usuario debe configurar su API Key.
-const String kGoogleMapsApiKey = "AIzaSyBoqj2bFlP61oWgzjaHC6oZxhNMEOUBf5Y";
+const String kGoogleMapsApiKey = "AIzaSyASZXQg6DuMo2NRbxnhmLssq6lVPaBL8ZU";
 
 class MapPickerScreen extends StatefulWidget {
   const MapPickerScreen({super.key});
@@ -23,35 +24,94 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     9.9281,
     -84.0907,
   ); // Costa Rica default
-  String _selectedAddress = "Seleccione ubicación...";
+  String _selectedAddress = "";
+  bool _isGeocoding = false;
   List<dynamic> _predictions = [];
 
   static const CameraPosition _initialPosition = CameraPosition(
     target: LatLng(9.9281, -84.0907),
-    zoom: 14.4746,
+    zoom: 15,
   );
+
+  @override
+  void initState() {
+    super.initState();
+    _centerOnUser();
+  }
+
+  Future<void> _centerOnUser() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+
+      if (permission == LocationPermission.deniedForever) return;
+
+      final position = await Geolocator.getCurrentPosition();
+      final controller = await _controller.future;
+
+      controller.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(position.latitude, position.longitude),
+          16,
+        ),
+      );
+
+      if (mounted) {
+        setState(() {
+          _lastMapPosition = LatLng(position.latitude, position.longitude);
+        });
+        _reverseGeocode(_lastMapPosition);
+      }
+    } catch (e) {
+      debugPrint("Error centering on user: $e");
+    }
+  }
 
   void _onCameraMove(CameraPosition position) {
     _lastMapPosition = position.target;
+    // Clear old data while moving to avoid showing the wrong address for the new pin
+    if (_selectedAddress != "Obteniendo dirección...") {
+      setState(() {
+        _selectedAddress = "";
+        _searchController.text = "";
+        _predictions = [];
+      });
+    }
   }
 
   Future<void> _searchPlaces(String query) async {
     if (query.isEmpty) {
-      setState(() => _predictions = []);
+      if (mounted) setState(() => _predictions = []);
       return;
     }
 
     try {
       final url =
           "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${Uri.encodeComponent(query)}&key=$kGoogleMapsApiKey&language=es&components=country:cr";
-      final response = await http.get(Uri.parse(url));
+
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => http.Response('{"status": "TIMEOUT"}', 408),
+          );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['status'] == 'OK') {
-          setState(() {
-            _predictions = data['predictions'];
-          });
+          if (mounted) {
+            setState(() {
+              _predictions = data['predictions'];
+            });
+          }
+        } else {
+          debugPrint("Search Places status: ${data['status']}");
         }
       }
     } catch (e) {
@@ -64,7 +124,13 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       final placeId = prediction['place_id'];
       final url =
           "https://maps.googleapis.com/maps/api/place/details/json?place_id=$placeId&key=$kGoogleMapsApiKey&language=es";
-      final response = await http.get(Uri.parse(url));
+
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => http.Response('{"status": "TIMEOUT"}', 408),
+          );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -78,11 +144,14 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             CameraUpdate.newLatLngZoom(LatLng(lat, lng), 16),
           );
 
-          setState(() {
-            _selectedAddress = prediction['description'] ?? "";
-            _predictions = [];
-            _searchController.text = _selectedAddress;
-          });
+          if (mounted) {
+            setState(() {
+              _selectedAddress = prediction['description'] ?? "";
+              _predictions = [];
+              _searchController.text = _selectedAddress;
+              _lastMapPosition = LatLng(lat, lng);
+            });
+          }
         }
       }
     } catch (e) {
@@ -91,23 +160,61 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   }
 
   Future<void> _reverseGeocode(LatLng position) async {
+    if (!mounted) return;
+
+    setState(() {
+      _isGeocoding = true;
+    });
+
     try {
       final url =
           "https://maps.googleapis.com/maps/api/geocode/json?latlng=${position.latitude},${position.longitude}&key=$kGoogleMapsApiKey&language=es";
-      final response = await http.get(Uri.parse(url));
+
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () => http.Response('{"status": "TIMEOUT"}', 408),
+          );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['status'] == 'OK' && data['results'].isNotEmpty) {
-          setState(() {
-            _selectedAddress = data['results'][0]['formatted_address'] ?? "";
-            _searchController.text = _selectedAddress;
-          });
+          if (mounted) {
+            setState(() {
+              _selectedAddress = data['results'][0]['formatted_address'] ?? "";
+              _searchController.text = _selectedAddress;
+            });
+          }
+          return;
         }
       }
     } catch (e) {
       debugPrint("Error reverse geocoding: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGeocoding = false;
+        });
+      }
     }
+  }
+
+  Future<void> _geocodeAndPop() async {
+    // We allow confirming even if geocoding is still running
+    String finalAddress = _selectedAddress;
+
+    if (finalAddress.isEmpty || finalAddress == "Buscando dirección...") {
+      // Cleaner coordinate fallback
+      finalAddress =
+          "${_lastMapPosition.latitude.toStringAsFixed(6)}, ${_lastMapPosition.longitude.toStringAsFixed(6)}";
+    }
+
+    Navigator.pop(context, {
+      'address': finalAddress,
+      'lat': _lastMapPosition.latitude,
+      'lng': _lastMapPosition.longitude,
+    });
   }
 
   @override
@@ -129,9 +236,13 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             initialCameraPosition: _initialPosition,
             onMapCreated: (GoogleMapController controller) {
               _controller.complete(controller);
+              // Trigger initial geocoding
+              _reverseGeocode(_lastMapPosition);
             },
             onCameraMove: _onCameraMove,
-            onCameraIdle: () => _reverseGeocode(_lastMapPosition),
+            onCameraIdle: () {
+              _reverseGeocode(_lastMapPosition);
+            },
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
           ),
@@ -213,13 +324,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             left: 20,
             right: 20,
             child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context, {
-                  'address': _selectedAddress,
-                  'lat': _lastMapPosition.latitude,
-                  'lng': _lastMapPosition.longitude,
-                });
-              },
+              onPressed: _geocodeAndPop,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0064A5),
                 foregroundColor: Colors.white,
@@ -229,10 +334,22 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                 ),
                 elevation: 5,
               ),
-              child: const Text(
-                "Confirmar Ubicación",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              child: _isGeocoding
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      "Confirmar Ubicación",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ),
         ],

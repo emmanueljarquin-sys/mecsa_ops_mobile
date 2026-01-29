@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import 'reservation_form_screen.dart';
+import 'reservation_detail_screen.dart';
 
 class FlotillaScreen extends StatelessWidget {
   const FlotillaScreen({super.key});
@@ -105,11 +106,18 @@ class FlotillaScreen extends StatelessWidget {
                   final modelo = vehiculo['modelo'] ?? 'Vehículo';
                   final nombreVehiculo = "$marca $modelo".trim();
 
-                  // Image
+                  // Image logic (Standardized)
                   String? imageUrl;
-                  if (vehiculo['foto'] != null) {
-                    imageUrl =
-                        "https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/flotilla/${vehiculo['foto']}";
+                  final dynamic foto = vehiculo['foto'];
+                  if (foto != null) {
+                    if (foto is String && foto.startsWith('http')) {
+                      imageUrl = foto;
+                    } else if (foto is Map && foto['url'] != null) {
+                      imageUrl = foto['url'];
+                    } else if (foto is String) {
+                      imageUrl =
+                          "https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/flotilla/$foto";
+                    }
                   }
 
                   final estadoDb = res['estado'] ?? 'Pendiente';
@@ -163,145 +171,161 @@ class FlotillaScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: Row(
-                      children: [
-                        // Image Section
-                        ClipRRect(
-                          borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(16),
-                            bottomLeft: Radius.circular(16),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                ReservationDetailScreen(reservation: res),
                           ),
-                          child: Image.network(
-                            imageUrl ?? 'https://via.placeholder.com/120',
-                            width: 120,
-                            height: 120,
-                            fit: BoxFit.cover,
-                            errorBuilder: (c, e, s) => Container(
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          // Image Section
+                          ClipRRect(
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(16),
+                              bottomLeft: Radius.circular(16),
+                            ),
+                            child: Image.network(
+                              imageUrl ?? 'https://via.placeholder.com/120',
                               width: 120,
                               height: 120,
-                              color: Colors.grey[300],
-                              child: const Icon(Icons.directions_car),
+                              fit: BoxFit.cover,
+                              errorBuilder: (c, e, s) => Container(
+                                width: 120,
+                                height: 120,
+                                color: Colors.grey[300],
+                                child: const Icon(Icons.directions_car),
+                              ),
                             ),
                           ),
-                        ),
-                        // Info Section
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        nombreVehiculo.isNotEmpty
-                                            ? nombreVehiculo
-                                            : 'Reserva #${res['id']}',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: badgeColorBg,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        estadoDisplay,
-                                        style: TextStyle(
-                                          color: badgeColorText,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  vehiculo['placa'] ?? 'Placa pendiente',
-                                  style: const TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-
-                                // Fecha y Hora
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.calendar_today,
-                                      size: 14,
-                                      color: Color(0xFF0D6EFD),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      fechaDisplay,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        color: Color(0xFF495057),
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    const Icon(
-                                      Icons.access_time,
-                                      size: 14,
-                                      color: Color(0xFFFD7E14),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      horaDisplay,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        color: Color(0xFF495057),
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (res['ubicacion'] != null &&
-                                    res['ubicacion'].toString().isNotEmpty) ...[
-                                  const SizedBox(height: 6),
+                          // Info Section
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      const Icon(
-                                        Icons.map_outlined,
-                                        size: 14,
-                                        color: Colors.green,
-                                      ),
-                                      const SizedBox(width: 4),
                                       Expanded(
                                         child: Text(
-                                          res['ubicacion'],
+                                          nombreVehiculo.isNotEmpty
+                                              ? nombreVehiculo
+                                              : 'Reserva #${res['id']}',
                                           style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.black87,
-                                            fontWeight: FontWeight.w500,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
                                           ),
-                                          maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: badgeColorBg,
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          estadoDisplay,
+                                          style: TextStyle(
+                                            color: badgeColorText,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    vehiculo['placa'] ?? 'Placa pendiente',
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+
+                                  // Fecha y Hora
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.calendar_today,
+                                        size: 14,
+                                        color: Color(0xFF0D6EFD),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        fechaDisplay,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: Color(0xFF495057),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      const Icon(
+                                        Icons.access_time,
+                                        size: 14,
+                                        color: Color(0xFFFD7E14),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        horaDisplay,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: Color(0xFF495057),
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (res['ubicacion'] != null &&
+                                      res['ubicacion']
+                                          .toString()
+                                          .isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.map_outlined,
+                                          size: 14,
+                                          color: Colors.green,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            res['ubicacion'],
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.black87,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   );
                 }).toList(),

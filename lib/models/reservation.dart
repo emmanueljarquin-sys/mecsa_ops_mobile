@@ -1,12 +1,12 @@
 class Reservation {
-  final int? id;
-  final int vehiculoId;
+  final String? id;
+  final dynamic vehiculoId;
   final String empleadoId;
   final DateTime fechaSalida;
   final DateTime fechaRegreso;
   final String motivo;
   final String estado;
-  final int? proyectoId;
+  final dynamic proyectoId;
   final String? ubicacion;
 
   Reservation({

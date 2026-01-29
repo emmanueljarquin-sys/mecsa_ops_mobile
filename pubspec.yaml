@@ -42,6 +42,7 @@ dependencies:
   google_maps_flutter: any
   uuid: any
   http: ^1.2.1
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:
