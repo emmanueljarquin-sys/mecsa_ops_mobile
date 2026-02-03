@@ -31,9 +31,9 @@ class BottomNav extends StatelessWidget {
           label: 'Viáticos',
         ),
         NavigationDestination(
-          icon: Icon(Icons.location_on_outlined),
-          selectedIcon: Icon(Icons.location_on),
-          label: 'Visitas',
+          icon: Icon(Icons.person_outline),
+          selectedIcon: Icon(Icons.person),
+          label: 'Perfil',
         ),
       ],
     );

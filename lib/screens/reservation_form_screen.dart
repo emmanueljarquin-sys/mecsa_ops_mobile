@@ -19,11 +19,13 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
   final _motivoController = TextEditingController();
   final _projectController = TextEditingController();
   final _ubicacionController = TextEditingController();
+  final _personalController = TextEditingController();
 
   DateTime? _startDate;
   DateTime? _endDate;
   String? _selectedprojectId;
   String? _selectedVehicleId;
+  List<Map<String, dynamic>> _selectedEmployees = [];
 
   @override
   void initState() {
@@ -193,7 +195,11 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                   );
                   if (result != null && result is Map) {
                     setState(() {
-                      _ubicacionController.text = result['address'];
+                      // Guardamos formato híbrido: LAT,LNG|ADDRESS
+                      final lat = result['lat'];
+                      final lng = result['lng'];
+                      final addr = result['address'];
+                      _ubicacionController.text = "$lat,$lng|$addr";
                     });
                   }
                 },
@@ -235,7 +241,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          "Ubicación cargada: ${_ubicacionController.text}",
+                          "Ubicación cargada: ${_ubicacionController.text.contains('|') ? _ubicacionController.text.split('|')[1] : _ubicacionController.text}",
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.green,
@@ -246,6 +252,31 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                     ],
                   ),
                 ),
+              const SizedBox(height: 16),
+
+              // Personal Incluido
+              TextFormField(
+                controller: _personalController,
+                readOnly: true,
+                decoration: InputDecoration(
+                  labelText: "Personal Incluido",
+                  hintText: "Toque para seleccionar personal...",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                  prefixIcon: const Icon(
+                    Icons.people_outline,
+                    color: Colors.orange,
+                  ),
+                  suffixIcon: const Icon(Icons.arrow_drop_down),
+                ),
+                onTap: () {
+                  _showEmployeeSelection(context, provider.employees);
+                },
+              ),
+
               const SizedBox(height: 32),
 
               SizedBox(
@@ -302,6 +333,42 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                   _projectController.text = name;
                 });
                 Navigator.pop(context);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showEmployeeSelection(
+    BuildContext context,
+    List<Map<String, dynamic>> employees,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.9,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return _EmployeeMultiSelectModal(
+              employees: employees,
+              initialSelection: _selectedEmployees,
+              scrollController: scrollController,
+              onConfirm: (List<Map<String, dynamic>> selected) {
+                setState(() {
+                  _selectedEmployees = selected;
+                  _personalController.text = selected
+                      .map((e) => e['nombre_completo'])
+                      .join(', ');
+                });
               },
             );
           },
@@ -433,6 +500,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
       'motivo': _motivoController.text,
       'proyecto_id': _selectedprojectId,
       'ubicacion': _ubicacionController.text,
+      'personal_incluido': _personalController.text,
       'estado': 'Pendiente',
     });
 
@@ -535,6 +603,160 @@ class _ProjectSearchModalState extends State<_ProjectSearchModal> {
                   p['id'].toString(),
                   p['name'] ?? 'Sin Título',
                 ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _EmployeeMultiSelectModal extends StatefulWidget {
+  final List<Map<String, dynamic>> employees;
+  final List<Map<String, dynamic>> initialSelection;
+  final ScrollController scrollController;
+  final Function(List<Map<String, dynamic>>) onConfirm;
+
+  const _EmployeeMultiSelectModal({
+    required this.employees,
+    required this.initialSelection,
+    required this.scrollController,
+    required this.onConfirm,
+  });
+
+  @override
+  State<_EmployeeMultiSelectModal> createState() =>
+      _EmployeeMultiSelectModalState();
+}
+
+class _EmployeeMultiSelectModalState extends State<_EmployeeMultiSelectModal> {
+  List<Map<String, dynamic>> _filteredEmployees = [];
+  List<Map<String, dynamic>> _selectedEmployees = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredEmployees = widget.employees;
+    _selectedEmployees = List.from(widget.initialSelection);
+  }
+
+  void _filter(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredEmployees = widget.employees;
+      } else {
+        _filteredEmployees = widget.employees.where((e) {
+          final name = (e['nombre_completo'] ?? '').toString().toLowerCase();
+          return name.contains(query.toLowerCase());
+        }).toList();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Header with Confirm button
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Cancelar"),
+              ),
+              const Text(
+                "Seleccionar Personal",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  widget.onConfirm(_selectedEmployees);
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                ),
+                child: const Text("Confirmar"),
+              ),
+            ],
+          ),
+        ),
+        // Search Bar
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: TextField(
+            onChanged: _filter,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              hintText: "Buscar empleado...",
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              filled: true,
+              fillColor: Colors.grey[100],
+            ),
+          ),
+        ),
+        // Selected counter
+        if (_selectedEmployees.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  "${_selectedEmployees.length} seleccionados",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
+                  ),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => setState(() => _selectedEmployees.clear()),
+                  child: const Text("Limpiar todo"),
+                ),
+              ],
+            ),
+          ),
+        const Divider(),
+        // List
+        Expanded(
+          child: ListView.separated(
+            controller: widget.scrollController,
+            itemCount: _filteredEmployees.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final e = _filteredEmployees[index];
+              final isSelected = _selectedEmployees.any(
+                (sel) => sel['id'] == e['id'],
+              );
+
+              return CheckboxListTile(
+                title: Text(
+                  e['nombre_completo'] ?? 'Sin Nombre',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                value: isSelected,
+                onChanged: (bool? value) {
+                  setState(() {
+                    if (value == true) {
+                      _selectedEmployees.add(e);
+                    } else {
+                      _selectedEmployees.removeWhere(
+                        (sel) => sel['id'] == e['id'],
+                      );
+                    }
+                  });
+                },
+                activeColor: AppTheme.primaryColor,
               );
             },
           ),

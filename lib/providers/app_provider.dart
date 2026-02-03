@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class AppProvider extends ChangeNotifier {
   int _currentIndex = 0;
@@ -22,7 +24,37 @@ class AppProvider extends ChangeNotifier {
   List<Map<String, dynamic>> reservas = [];
   List<Map<String, dynamic>> projects = [];
   List<Map<String, dynamic>> myReservations = [];
+  List<Map<String, dynamic>> employees = [];
   String? currentEmployeeId;
+  Map<String, dynamic>?
+  currentEmployeeData; // Nuevo: Datos completos del perfil
+
+  RealtimeChannel? _liquidacionesChannel;
+  final FlutterLocalNotificationsPlugin _notificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+  String? _notificationMessage;
+  // ...
+  Future<void> _fetchCurrentEmployeeId() async {
+    try {
+      if (user?.email == null) return;
+      // Fetch completo de datos del empleado
+      final res = await _supabase
+          .from('Empleados')
+          .select() // Trae todas las columnas
+          .eq('email', user!.email!)
+          .maybeSingle();
+
+      if (res != null) {
+        currentEmployeeId = res['id'].toString();
+        currentEmployeeData = res; // Guardamos todo el objeto
+        notifyListeners(); // Notificar cambios para que UI se actualice
+      }
+    } catch (e) {
+      debugPrint("Error fetching employee ID: $e");
+    }
+  }
+
+  String? get notificationMessage => _notificationMessage;
 
   bool isLoading = true;
   String? errorMessage;
@@ -40,10 +72,55 @@ class AppProvider extends ChangeNotifier {
         // Clear data on logout
         vehiculos = [];
         projects = [];
+        _unsubscribeFromLiquidaciones(); // Clean up
         notifyListeners();
       }
     });
+    _initNotifications();
     fetchData(); // Initial attempt
+  }
+
+  Future<void> _initNotifications() async {
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
+    const iosSettings = DarwinInitializationSettings();
+    const settings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+    await _notificationsPlugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (details) {
+        // Handle click
+      },
+    );
+
+    // Request Android 13+ permissions
+    final androidImplementation = _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    if (androidImplementation != null) {
+      await androidImplementation.requestNotificationsPermission();
+    }
+
+    _saveFcmToken();
+  }
+
+  Future<void> _saveFcmToken() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null && currentEmployeeId != null) {
+        debugPrint("FCM Token: $token");
+        await _supabase
+            .from('Empleados')
+            .update({'fcm_token': token})
+            .eq('id', currentEmployeeId!);
+      }
+    } catch (e) {
+      debugPrint("Error saving FCM token: $e");
+    }
   }
 
   Future<bool> signIn(String email, String password) async {
@@ -96,6 +173,7 @@ class AppProvider extends ChangeNotifier {
         _fetchRutas(),
         _fetchProjects(),
         _fetchMyReservations(),
+        _fetchEmployees(),
       ]);
     } catch (e) {
       debugPrint("Error fetching data: $e");
@@ -103,24 +181,7 @@ class AppProvider extends ChangeNotifier {
     } finally {
       isLoading = false;
       notifyListeners();
-    }
-  }
-
-  Future<void> _fetchCurrentEmployeeId() async {
-    try {
-      if (user?.email == null) return;
-      // Using verified table 'Empleados' and column 'email'
-      final res = await _supabase
-          .from('Empleados')
-          .select('id')
-          .eq('email', user!.email!)
-          .maybeSingle();
-
-      if (res != null) {
-        currentEmployeeId = res['id'].toString();
-      }
-    } catch (e) {
-      debugPrint("Error fetching employee ID: $e");
+      _subscribeToLiquidaciones();
     }
   }
 
@@ -214,10 +275,13 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> _fetchViaticos() async {
     try {
+      if (currentEmployeeId == null) return;
+
       final res = await _supabase
           .schema('viaticos')
           .from('liquidaciones')
-          .select();
+          .select()
+          .eq('empleado_id', currentEmployeeId!);
       liquidacionesPendientes = (res as List)
           .where((e) => e['estado'] != 'Aprobado')
           .length;
@@ -243,15 +307,20 @@ class AppProvider extends ChangeNotifier {
   Future<void> _fetchRutas() async {
     try {
       final resVisitas = await _supabase
-          .schema('rutas')
+          .schema('visitas')
           .from('visitas')
           .select();
-      // Assuming 'rutas' table for count
-      final resRutas = await _supabase
-          .schema('rutas')
-          .from('rutas')
-          .select('id');
-      rutasActivas = (resRutas as List).length;
+
+      // Intentar obtener conteo de rutas si existe la tabla, si no omitir
+      try {
+        final resRutas = await _supabase
+            .schema('visitas')
+            .from('rutas')
+            .select('id');
+        rutasActivas = (resRutas as List).length;
+      } catch (e) {
+        rutasActivas = 0;
+      }
 
       visitas = (resVisitas as List)
           .map(
@@ -278,16 +347,37 @@ class AppProvider extends ChangeNotifier {
       final res = await _supabase
           .schema('proyectos')
           .from('projects')
-          .select('project_id, title'); // Adjust columns as needed
+          .select(
+            'project_id, nombre',
+          ); // Cambiado a 'nombre' según lo descubierto
 
       projects = (res as List)
-          .map((p) => {'id': p['project_id'].toString(), 'name': p['title']})
+          .map(
+            (p) => {
+              'id': p['project_id'].toString(),
+              'name': p['nombre'] ?? 'Sin nombre',
+            },
+          )
           .toList()
           .cast<Map<String, dynamic>>();
     } catch (e) {
       debugPrint("Error loading projects: $e");
       // Don't block app if projects fail
       projects = [];
+    }
+  }
+
+  Future<void> _fetchEmployees() async {
+    try {
+      final res = await _supabase
+          .from('Empleados')
+          .select('id, nombre_completo')
+          .order('nombre_completo', ascending: true);
+
+      employees = List<Map<String, dynamic>>.from(res);
+    } catch (e) {
+      debugPrint("Error loading employees: $e");
+      employees = [];
     }
   }
 
@@ -493,5 +583,158 @@ class AppProvider extends ChangeNotifier {
   void clearTripDistance(String reservaId) {
     _activeTripDistances.remove(reservaId);
     notifyListeners();
+  }
+
+  void clearNotificationMessage() {
+    _notificationMessage = null;
+    notifyListeners();
+  }
+
+  void _unsubscribeFromLiquidaciones() {
+    if (_liquidacionesChannel != null) {
+      _supabase.removeChannel(_liquidacionesChannel!);
+      _liquidacionesChannel = null;
+    }
+  }
+
+  void _subscribeToLiquidaciones() {
+    if (currentEmployeeId == null) {
+      debugPrint("Realtime: No hay ID de empleado para suscribirse.");
+      return;
+    }
+    if (_liquidacionesChannel != null) {
+      debugPrint("Realtime: Canal ya existente, ignorando suscripción.");
+      return;
+    }
+
+    debugPrint(
+      "Realtime: Intentando suscribir a changes para empleado $currentEmployeeId en viaticos.liquidaciones...",
+    );
+
+    try {
+      _liquidacionesChannel = _supabase
+          .channel('public:liquidaciones_user_$currentEmployeeId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'viaticos',
+            table: 'liquidaciones',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'empleado_id',
+              value: currentEmployeeId!,
+            ),
+            callback: (payload) {
+              debugPrint(
+                "Realtime: EVENTO RECIBIDO! Payload: ${payload.toString()}",
+              );
+              final newVal = payload.newRecord;
+              debugPrint("Realtime: Nuevo estado: ${newVal['estado']}");
+
+              if (newVal['estado'] == 'aprobada' ||
+                  newVal['estado'] == 'rechazada') {
+                _notificationMessage =
+                    "Tu liquidación ha sido ${newVal['estado']}";
+                _showLocalNotification("IMPORTANTE", _notificationMessage!);
+                _fetchViaticos();
+                notifyListeners();
+              }
+            },
+          )
+          .subscribe((status, error) {
+            debugPrint("Realtime Status: $status");
+            if (error != null) debugPrint("Realtime Error: $error");
+          });
+    } catch (e) {
+      debugPrint("Error subscribing to realtime: $e");
+    }
+  }
+
+  Future<void> _showLocalNotification(String title, String body) async {
+    const androidDetails = AndroidNotificationDetails(
+      'channel_liquidaciones',
+      'Liquidaciones',
+      importance: Importance.max,
+      priority: Priority.high,
+    );
+    const iosDetails = DarwinNotificationDetails();
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _notificationsPlugin.show(
+      DateTime.now().millisecond, // Unique ID
+      title,
+      body,
+      details,
+    );
+  }
+
+  Future<void> updateProfilePhoto(File imageFile) async {
+    try {
+      if (currentEmployeeId == null) {
+        debugPrint("❌ No hay currentEmployeeId");
+        return;
+      }
+
+      debugPrint(
+        "📸 Iniciando actualización de foto para empleado: $currentEmployeeId",
+      );
+      isLoading = true;
+      notifyListeners();
+
+      final fileExt = imageFile.path.split('.').last;
+      final fileName =
+          'profile_${currentEmployeeId}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+      final filePath = fileName;
+
+      debugPrint("📁 Subiendo archivo: $filePath");
+
+      // 1. Upload to Supabase Storage
+      await _supabase.storage
+          .from('empleados')
+          .upload(
+            filePath,
+            imageFile,
+            fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
+          );
+
+      debugPrint("✅ Archivo subido exitosamente");
+
+      // 2. Get Public URL
+      final String publicUrl = _supabase.storage
+          .from('empleados')
+          .getPublicUrl(filePath);
+
+      debugPrint("🔗 URL pública generada: $publicUrl");
+
+      // 3. Update DB
+      debugPrint("💾 Actualizando base de datos...");
+      final response = await _supabase
+          .from('Empleados')
+          .update({'photo': publicUrl})
+          .eq('id', currentEmployeeId!)
+          .select();
+
+      debugPrint("✅ Respuesta de actualización DB: $response");
+
+      // 4. Update Local
+      if (currentEmployeeData != null) {
+        currentEmployeeData!['photo'] = publicUrl;
+        debugPrint("✅ Estado local actualizado");
+      }
+
+      _notificationMessage = "Foto de perfil actualizada";
+      notifyListeners();
+
+      debugPrint("🎉 Proceso completado exitosamente");
+    } catch (e) {
+      debugPrint("❌ Error updating profile photo: $e");
+      errorMessage = "Error al actualizar foto: $e";
+      notifyListeners();
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
   }
 }

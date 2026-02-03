@@ -225,7 +225,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
           "Buscar Ubicación",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
-        backgroundColor: const Color(0xFF0064A5),
+        backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
@@ -278,7 +278,10 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                     decoration: InputDecoration(
                       hintText: "Buscar destino...",
                       border: InputBorder.none,
-                      icon: const Icon(Icons.search, color: Color(0xFF0064A5)),
+                      icon: Icon(
+                        Icons.search,
+                        color: Theme.of(context).primaryColor,
+                      ),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.close),
@@ -326,7 +329,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             child: ElevatedButton(
               onPressed: _geocodeAndPop,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0064A5),
+                backgroundColor: Theme.of(context).primaryColor,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 15),
                 shape: RoundedRectangleBorder(

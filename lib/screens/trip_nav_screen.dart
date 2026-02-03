@@ -130,30 +130,31 @@ class _TripNavScreenState extends State<TripNavScreen> {
     try {
       // 1. Obtener coordenadas del destino
       LatLng destCoords;
-      if (widget.destination.contains(',')) {
-        try {
-          final parts = widget.destination.split(',');
+      String locationData = widget.destination;
+
+      if (locationData.contains('|')) {
+        final parts = locationData.split('|');
+        final coords = parts[0].split(',');
+        destCoords = LatLng(
+          double.parse(coords[0].trim()),
+          double.parse(coords[1].trim()),
+        );
+      } else if (locationData.contains(',')) {
+        final parts = locationData.split(',');
+        if (parts.length == 2 &&
+            double.tryParse(parts[0].trim()) != null &&
+            double.tryParse(parts[1].trim()) != null) {
           destCoords = LatLng(
             double.parse(parts[0].trim()),
             double.parse(parts[1].trim()),
           );
-        } catch (e) {
-          throw "Formato de coordenadas inválido.";
+        } else {
+          // No son coordenadas, usar geocoding
+          destCoords = await _geocodeAddress(locationData);
         }
       } else {
-        print("TripNav: [STEP 6] Geocoding address...");
-        final geoUrl =
-            "https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(widget.destination)}&key=$kGoogleMapsApiKey";
-        final geoRes = await http
-            .get(Uri.parse(geoUrl))
-            .timeout(const Duration(seconds: 15));
-        final geoData = json.decode(geoRes.body);
-        if (geoData['status'] == 'OK') {
-          final loc = geoData['results'][0]['geometry']['location'];
-          destCoords = LatLng(loc['lat'], loc['lng']);
-        } else {
-          throw "No se encontró el destino (${geoData['status']})";
-        }
+        // No tiene comas ni separador, intentar geocoding directo
+        destCoords = await _geocodeAddress(locationData);
       }
 
       // 2. Obtener ruta (Directions API)
@@ -176,7 +177,7 @@ class _TripNavScreenState extends State<TripNavScreen> {
               Polyline(
                 polylineId: const PolylineId('route'),
                 points: polylinePoints,
-                color: const Color(0xFF0064A5),
+                color: Theme.of(context).primaryColor,
                 width: 6,
               ),
             );
@@ -185,7 +186,10 @@ class _TripNavScreenState extends State<TripNavScreen> {
               Marker(
                 markerId: const MarkerId('destination'),
                 position: destCoords,
-                infoWindow: InfoWindow(title: "Destino: ${widget.destination}"),
+                infoWindow: InfoWindow(
+                  title:
+                      "Destino: ${widget.destination.contains('|') ? widget.destination.split('|')[1] : widget.destination}",
+                ),
                 icon: BitmapDescriptor.defaultMarkerWithHue(
                   BitmapDescriptor.hueRed,
                 ),
@@ -257,6 +261,21 @@ class _TripNavScreenState extends State<TripNavScreen> {
     return points;
   }
 
+  Future<LatLng> _geocodeAddress(String address) async {
+    print("TripNav: [GEOCODE] Geocoding address: $address");
+    final url =
+        "https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(address)}&key=$kGoogleMapsApiKey";
+    final response = await http.get(Uri.parse(url));
+    final data = json.decode(response.body);
+
+    if (data['status'] == 'OK') {
+      final location = data['results'][0]['geometry']['location'];
+      return LatLng(location['lat'], location['lng']);
+    } else {
+      throw "No se pudo encontrar la ubicación: ${data['status']}";
+    }
+  }
+
   void _fitBounds(List<LatLng> points, GoogleMapController controller) {
     double minLat = points.first.latitude;
     double minLng = points.first.longitude;
@@ -286,7 +305,7 @@ class _TripNavScreenState extends State<TripNavScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("En Ruta"),
-        backgroundColor: const Color(0xFF0D1B2A),
+        backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
       ),
       body: Stack(

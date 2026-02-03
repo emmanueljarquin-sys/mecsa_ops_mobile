@@ -13,7 +13,7 @@ class FlotillaScreen extends StatelessWidget {
     final vehicles = provider.vehiculos;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -42,10 +42,10 @@ class FlotillaScreen extends StatelessWidget {
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0D6EFD),
+                      backgroundColor: Theme.of(context).primaryColor,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -158,21 +158,15 @@ class FlotillaScreen extends StatelessWidget {
                     // Fallback to raw string
                   }
 
-                  return Container(
+                  return Card(
                     margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(color: Colors.grey.withOpacity(0.1)),
                     ),
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(20),
                       onTap: () {
                         Navigator.push(
                           context,
@@ -187,8 +181,8 @@ class FlotillaScreen extends StatelessWidget {
                           // Image Section
                           ClipRRect(
                             borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(16),
-                              bottomLeft: Radius.circular(16),
+                              topLeft: Radius.circular(20),
+                              bottomLeft: Radius.circular(20),
                             ),
                             child: Image.network(
                               imageUrl ?? 'https://via.placeholder.com/120',
@@ -261,10 +255,10 @@ class FlotillaScreen extends StatelessWidget {
                                   // Fecha y Hora
                                   Row(
                                     children: [
-                                      const Icon(
+                                      Icon(
                                         Icons.calendar_today,
                                         size: 14,
-                                        color: Color(0xFF0D6EFD),
+                                        color: Theme.of(context).primaryColor,
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
@@ -307,7 +301,13 @@ class FlotillaScreen extends StatelessWidget {
                                         const SizedBox(width: 4),
                                         Expanded(
                                           child: Text(
-                                            res['ubicacion'],
+                                            res['ubicacion']
+                                                    .toString()
+                                                    .contains('|')
+                                                ? res['ubicacion']
+                                                      .toString()
+                                                      .split('|')[1]
+                                                : res['ubicacion'],
                                             style: const TextStyle(
                                               fontSize: 12,
                                               color: Colors.black87,
@@ -372,63 +372,59 @@ class _VehicleListCard extends StatelessWidget {
           ),
         );
       },
-      child: Container(
+      child: Card(
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.grey.withOpacity(0.1)),
         ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                data['image'],
-                width: 70,
-                height: 50,
-                fit: BoxFit.cover,
-                errorBuilder: (c, e, s) =>
-                    Container(width: 70, height: 50, color: Colors.grey[200]),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  data['image'],
+                  width: 70,
+                  height: 50,
+                  fit: BoxFit.cover,
+                  errorBuilder: (c, e, s) =>
+                      Container(width: 70, height: 50, color: Colors.grey[200]),
+                ),
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    data['name'],
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      data['name'],
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
                     ),
-                  ),
-                  Text(
-                    "${data['plate']} ${data['year'] != '' ? '• ' + data['year'].toString() : ''}",
-                    style: TextStyle(color: Colors.blue[600], fontSize: 13),
-                  ),
-                ],
+                    Text(
+                      "${data['plate']} ${data['year'] != '' ? '• ' + data['year'].toString() : ''}",
+                      style: TextStyle(color: Colors.blue[600], fontSize: 13),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: isAvailable
-                    ? const Color(0xFF00C853)
-                    : const Color(0xFFF44336),
-                shape: BoxShape.circle,
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: isAvailable
+                      ? const Color(0xFF00C853)
+                      : const Color(0xFFF44336),
+                  shape: BoxShape.circle,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

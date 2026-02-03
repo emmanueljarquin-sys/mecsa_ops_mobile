@@ -11,7 +11,7 @@ class VisitasScreen extends StatelessWidget {
     final visitas = provider.visitas;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -37,14 +37,14 @@ class VisitasScreen extends StatelessWidget {
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0D6EFD), // Blue
+                      backgroundColor: Theme.of(context).primaryColor,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 12,
                       ),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                     ),
                     icon: const Icon(Icons.add, size: 18),
@@ -100,17 +100,11 @@ class _VisitaCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: Colors.grey.withOpacity(0.1)),
       ),
       child: Column(
         children: [
@@ -167,10 +161,10 @@ class _VisitaCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.location_on_outlined,
                       size: 20,
-                      color: Color(0xFF0D6EFD),
+                      color: Theme.of(context).primaryColor,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -196,21 +190,21 @@ class _VisitaCard extends StatelessWidget {
                         Text(date, style: const TextStyle(color: Colors.grey)),
                       ],
                     ),
-                    const Row(
+                    Row(
                       children: [
                         Text(
                           "VER DETALLES",
                           style: TextStyle(
-                            color: Color(0xFF0D6EFD),
+                            color: Theme.of(context).primaryColor,
                             fontWeight: FontWeight.bold,
                             fontSize: 12,
                           ),
                         ),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 4),
                         Icon(
                           Icons.arrow_forward_ios,
                           size: 10,
-                          color: Color(0xFF0D6EFD),
+                          color: Theme.of(context).primaryColor,
                         ),
                       ],
                     ),

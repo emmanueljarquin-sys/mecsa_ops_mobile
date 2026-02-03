@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'vehicle_register_screen.dart';
 import 'trip_nav_screen.dart';
@@ -52,7 +51,7 @@ class ReservationDetailScreen extends StatelessWidget {
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
         title: const Text('Detalles de Reserva'),
-        backgroundColor: const Color(0xFF0D1B2A),
+        backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
         elevation: 0,
       ),
@@ -123,10 +122,10 @@ class ReservationDetailScreen extends StatelessWidget {
                   // Title and Plate
                   Text(
                     nombreVehiculo,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF1B263B),
+                      color: Theme.of(context).primaryColor,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -134,7 +133,7 @@ class ReservationDetailScreen extends StatelessWidget {
                     "Placa: $placa",
                     style: TextStyle(
                       fontSize: 16,
-                      color: Colors.blue[700],
+                      color: Theme.of(context).primaryColor.withOpacity(0.8),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -172,35 +171,35 @@ class ReservationDetailScreen extends StatelessWidget {
                       reservation['ubicacion'].toString().isNotEmpty) ...[
                     _buildSectionTitle("UBICACIÓN / DESTINO"),
                     const SizedBox(height: 12),
-                    InkWell(
-                      onTap: () => _openMap(context, reservation['ubicacion']),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.map, color: Colors.redAccent),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                reservation['ubicacion'],
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black87,
-                                ),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.map, color: Colors.redAccent),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              reservation['ubicacion']?.toString().contains(
+                                        '|',
+                                      ) ==
+                                      true
+                                  ? reservation['ubicacion'].toString().split(
+                                      '|',
+                                    )[1]
+                                  : (reservation['ubicacion'] ??
+                                        "Sin ubicación"),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.black87,
                               ),
                             ),
-                            const Icon(
-                              Icons.open_in_new,
-                              size: 16,
-                              color: Colors.grey,
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 30),
@@ -310,7 +309,7 @@ class ReservationDetailScreen extends StatelessWidget {
             context,
             "REGISTRAR SALIDA",
             Icons.outbond,
-            const Color(0xFF0064A5),
+            Theme.of(context).primaryColor,
             () =>
                 Navigator.push(
                   context,
@@ -331,7 +330,7 @@ class ReservationDetailScreen extends StatelessWidget {
                 context,
                 "INICIAR VIAJE (DENTRO DE APP)",
                 Icons.navigation,
-                const Color(0xFF0D6EFD),
+                Theme.of(context).primaryColor,
                 () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -341,14 +340,6 @@ class ReservationDetailScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              _buildActionButton(
-                context,
-                "ABRIR EN WAZE (EXTERNO)",
-                Icons.map,
-                const Color(0xFF33CCFF),
-                () => _openWaze(context, reservation['ubicacion'] ?? ""),
               ),
               const SizedBox(height: 12),
               _buildActionButton(
@@ -405,14 +396,18 @@ class ReservationDetailScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.stars, color: Color(0xFF0D47A1), size: 20),
-                    SizedBox(width: 8),
+                    Icon(
+                      Icons.stars,
+                      color: Theme.of(context).primaryColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
                     Text(
                       "RESUMEN DE VIAJE",
                       style: TextStyle(
-                        color: Color(0xFF0D47A1),
+                        color: Theme.of(context).primaryColor,
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
                         letterSpacing: 0.5,
@@ -576,51 +571,6 @@ class ReservationDetailScreen extends StatelessWidget {
       return "${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
     } catch (e) {
       return dateStr;
-    }
-  }
-
-  Future<void> _openMap(BuildContext context, String ubicacion) async {
-    final query = Uri.encodeComponent(ubicacion);
-    final googleUrl = Uri.parse(
-      "https://www.google.com/maps/search/?api=1&query=$query",
-    );
-    final appleUrl = Uri.parse("http://maps.apple.com/?q=$query");
-
-    if (Theme.of(context).platform == TargetPlatform.android) {
-      if (await canLaunchUrl(googleUrl)) {
-        await launchUrl(googleUrl, mode: LaunchMode.externalApplication);
-      }
-    } else {
-      if (await canLaunchUrl(appleUrl)) {
-        await launchUrl(appleUrl, mode: LaunchMode.externalApplication);
-      } else if (await canLaunchUrl(googleUrl)) {
-        await launchUrl(googleUrl, mode: LaunchMode.externalApplication);
-      }
-    }
-  }
-
-  Future<void> _openWaze(BuildContext context, String ubicacion) async {
-    final query = Uri.encodeComponent(ubicacion);
-    final wazeUrl = Uri.parse("waze://?q=$query&navigate=yes");
-    final googleUrl = Uri.parse(
-      "https://www.google.com/maps/search/?api=1&query=$query",
-    );
-
-    try {
-      if (await canLaunchUrl(wazeUrl)) {
-        await launchUrl(wazeUrl, mode: LaunchMode.externalApplication);
-      } else {
-        // Fallback to Google Maps
-        if (await canLaunchUrl(googleUrl)) {
-          await launchUrl(googleUrl, mode: LaunchMode.externalApplication);
-        }
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("No se pudo abrir Waze o Google Maps")),
-        );
-      }
     }
   }
 }
