@@ -192,12 +192,12 @@ class DashboardTab extends StatelessWidget {
                     ),
                   ),
                 ],
-                child: const CircleAvatar(
+                child: CircleAvatar(
                   radius: 18,
-                  backgroundColor: Colors.grey,
-                  backgroundImage: NetworkImage(
-                    'https://i.pravatar.cc/150?img=11',
-                  ),
+                  backgroundColor: Colors.grey[200],
+                  backgroundImage: emp?['photo'] != null
+                      ? NetworkImage(emp!['photo'])
+                      : const NetworkImage('https://i.pravatar.cc/150?img=11'),
                 ),
               ),
             ],
@@ -410,9 +410,9 @@ class DashboardTab extends StatelessWidget {
                 CircleAvatar(
                   radius: 30,
                   backgroundColor: Colors.grey[200],
-                  backgroundImage: const NetworkImage(
-                    'https://i.pravatar.cc/150?img=11',
-                  ),
+                  backgroundImage: emp?['photo'] != null
+                      ? NetworkImage(emp!['photo'])
+                      : const NetworkImage('https://i.pravatar.cc/150?img=11'),
                 ),
                 const SizedBox(width: 16),
                 Expanded(

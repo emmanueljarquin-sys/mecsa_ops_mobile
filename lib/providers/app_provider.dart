@@ -685,8 +685,8 @@ class AppProvider extends ChangeNotifier {
 
       final fileExt = imageFile.path.split('.').last;
       final fileName =
-          'profile_${currentEmployeeId}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-      final filePath = fileName;
+          'profile_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+      final filePath = '$currentEmployeeId/$fileName';
 
       debugPrint("📁 Subiendo archivo: $filePath");
 
