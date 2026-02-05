@@ -195,6 +195,41 @@ class ProfileScreen extends StatelessWidget {
               value: "1.0.0 (Beta)",
             ),
 
+            const SizedBox(height: 32),
+            const Divider(),
+            const SizedBox(height: 8),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Ajustes de Navegación GPS",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // MUTE SWITCH
+            SwitchListTile(
+              title: const Text("Silenciar GPS"),
+              subtitle: const Text(
+                "Apagar instrucciones de voz durante el viaje",
+              ),
+              value: provider.isGpsMuted,
+              onChanged: (val) => provider.setGpsMute(val),
+              secondary: Icon(
+                provider.isGpsMuted ? Icons.volume_off : Icons.volume_up,
+                color: provider.isGpsMuted ? Colors.red : Colors.blue,
+              ),
+            ),
+
+            // VOICE SELECTOR
+            ListTile(
+              title: const Text("Voz del GPS"),
+              subtitle: Text(provider.selectedGpsVoiceName ?? "Predeterminada"),
+              leading: const Icon(Icons.record_voice_over, color: Colors.blue),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showProfileVoiceSettings(context, provider),
+            ),
+
             const SizedBox(height: 40),
             SizedBox(
               width: double.infinity,
@@ -215,6 +250,51 @@ class ProfileScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _showProfileVoiceSettings(BuildContext context, AppProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final voices = provider.availableVoices;
+        return AlertDialog(
+          title: const Text("Configuración de Voz"),
+          content: voices.isEmpty
+              ? const Text(
+                  "No se encontraron otras voces disponibles en español.",
+                )
+              : SizedBox(
+                  width: double.maxFinite,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: voices.length,
+                    itemBuilder: (context, index) {
+                      final voice = voices[index];
+                      final isSelected =
+                          provider.selectedGpsVoiceName == voice['name'];
+                      return ListTile(
+                        title: Text(voice['name'] ?? 'Voz desconocida'),
+                        subtitle: Text(voice['locale'] ?? ''),
+                        trailing: isSelected
+                            ? const Icon(Icons.check, color: Colors.blue)
+                            : null,
+                        onTap: () async {
+                          await provider.setGpsVoice(voice['name']!);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+                ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("CERRAR"),
+            ),
+          ],
+        );
+      },
     );
   }
 }

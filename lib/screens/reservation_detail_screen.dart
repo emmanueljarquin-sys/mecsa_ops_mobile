@@ -335,7 +335,7 @@ class ReservationDetailScreen extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => TripNavScreen(
-                      reservation: reservation,
+                      entity: reservation,
                       destination: reservation['ubicacion'] ?? "Destino",
                     ),
                   ),

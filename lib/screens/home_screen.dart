@@ -4,6 +4,7 @@ import '../providers/app_provider.dart';
 import '../widgets/bottom_nav.dart';
 import 'flotilla_screen.dart';
 import 'viaticos_screen.dart';
+import 'visitas_screen.dart';
 import 'profile_screen.dart'; // Import nuevo perfil
 
 class HomeScreen extends StatefulWidget {
@@ -24,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const DashboardTab(),
       const FlotillaScreen(),
       const ViaticosScreen(),
+      const VisitasScreen(),
       const ProfileScreen(), // Nueva pantalla
     ];
 

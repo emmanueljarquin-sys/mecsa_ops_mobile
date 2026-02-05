@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 
 class AppProvider extends ChangeNotifier {
   int _currentIndex = 0;
@@ -33,6 +35,16 @@ class AppProvider extends ChangeNotifier {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
   String? _notificationMessage;
+
+  // GPS Audio Preferences
+  bool _isGpsMuted = false;
+  String? _selectedGpsVoiceName;
+  List<Map<String, String>> _availableVoices = [];
+  final FlutterTts _tts = FlutterTts();
+
+  bool get isGpsMuted => _isGpsMuted;
+  String? get selectedGpsVoiceName => _selectedGpsVoiceName;
+  List<Map<String, String>> get availableVoices => _availableVoices;
   // ...
   Future<void> _fetchCurrentEmployeeId() async {
     try {
@@ -77,7 +89,50 @@ class AppProvider extends ChangeNotifier {
       }
     });
     _initNotifications();
+    _loadGpsPreferences();
     fetchData(); // Initial attempt
+  }
+
+  Future<void> _loadGpsPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    _isGpsMuted = prefs.getBool('gps_muted') ?? false;
+    _selectedGpsVoiceName = prefs.getString('gps_voice_name');
+    await loadAvailableVoices(); // Load voices as well
+    notifyListeners();
+  }
+
+  Future<void> loadAvailableVoices() async {
+    try {
+      final List<dynamic> voices = await _tts.getVoices;
+      _availableVoices = voices
+          .map((v) => Map<String, String>.from(v))
+          .where((v) => v['locale']!.startsWith('es'))
+          .toList();
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Error loading voices in provider: $e");
+    }
+  }
+
+  Future<void> setGpsMute(bool value) async {
+    _isGpsMuted = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('gps_muted', value);
+    notifyListeners();
+  }
+
+  Future<void> setGpsVoice(String name) async {
+    _selectedGpsVoiceName = name;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('gps_voice_name', name);
+
+    // Apply voice to local tts instance if it matches
+    try {
+      final voice = _availableVoices.firstWhere((v) => v['name'] == name);
+      await _tts.setVoice(voice);
+    } catch (_) {}
+
+    notifyListeners();
   }
 
   Future<void> _initNotifications() async {
@@ -306,39 +361,90 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> _fetchRutas() async {
     try {
+      if (currentEmployeeId == null) return;
+
       final resVisitas = await _supabase
           .schema('visitas')
           .from('visitas')
-          .select();
+          .select()
+          .eq('empleado_id', currentEmployeeId!)
+          .order('fecha', ascending: false);
 
-      // Intentar obtener conteo de rutas si existe la tabla, si no omitir
-      try {
-        final resRutas = await _supabase
-            .schema('visitas')
-            .from('rutas')
-            .select('id');
-        rutasActivas = (resRutas as List).length;
-      } catch (e) {
-        rutasActivas = 0;
-      }
+      visitas = List<Map<String, dynamic>>.from(resVisitas);
 
-      visitas = (resVisitas as List)
-          .map(
-            (v) => {
-              'client': v['cliente'] ?? 'Cliente',
-              'project': v['proyecto'] ?? 'Proyecto',
-              'address': v['direccion'] ?? 'Ubicación no registrada',
-              'date': v['fecha_programada'] ?? '',
-              'isCompleted': v['check_in'] != null,
-            },
-          )
-          .toList()
-          .cast<Map<String, dynamic>>();
+      // Conteo para el dashboard
+      rutasActivas = visitas.where((v) => v['estado'] == 'en_curso').length;
     } catch (e) {
-      debugPrint("Warning loading rutas (Schema might be missing): $e");
-      // Do not rethrow, just keep empty lists so other features work
+      debugPrint("Error loading visitas: $e");
       visitas = [];
       rutasActivas = 0;
+    }
+  }
+
+  Future<void> refreshVisitas() async {
+    await _fetchRutas();
+    notifyListeners();
+  }
+
+  Future<bool> createVisita(Map<String, dynamic> visitaData) async {
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
+
+      final data = {...visitaData, 'empleado_id': currentEmployeeId};
+
+      await _supabase.schema('visitas').from('visitas').insert(data);
+      await _fetchRutas();
+      return true;
+    } catch (e) {
+      debugPrint("Error creating visita: $e");
+      errorMessage = "Error al registrar visita: $e";
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> updateVisita(String id, Map<String, dynamic> visitaData) async {
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      await _supabase
+          .schema('visitas')
+          .from('visitas')
+          .update(visitaData)
+          .eq('id', id);
+
+      await _fetchRutas();
+      return true;
+    } catch (e) {
+      debugPrint("Error updating visita: $e");
+      errorMessage = "Error al actualizar visita: $e";
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> uploadVisitaFoto(File file) async {
+    try {
+      final fileName = "visita_${DateTime.now().millisecondsSinceEpoch}.jpg";
+      final path = "visitas/$fileName";
+
+      await _supabase.storage.from('visitas_fotos').upload(path, file);
+
+      final publicUrl = _supabase.storage
+          .from('visitas_fotos')
+          .getPublicUrl(path);
+      return publicUrl;
+    } catch (e) {
+      debugPrint("Error uploading visita photo: $e");
+      return null;
     }
   }
 
@@ -348,14 +454,14 @@ class AppProvider extends ChangeNotifier {
           .schema('proyectos')
           .from('projects')
           .select(
-            'project_id, nombre',
-          ); // Cambiado a 'nombre' según lo descubierto
+            'project_id, title',
+          ); // Cambiado a 'title' según lo descubierto
 
       projects = (res as List)
           .map(
             (p) => {
               'id': p['project_id'].toString(),
-              'name': p['nombre'] ?? 'Sin nombre',
+              'name': p['title'] ?? 'Sin nombre',
             },
           )
           .toList()
