@@ -14,12 +14,12 @@ plugins {
 
 android {
     namespace = "com.grupomecsa.mecsa_ops_mobile"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.grupomecsa.mecsa_ops_mobile"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

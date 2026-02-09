@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_provider.dart';
 import 'reservation_form_screen.dart';
 import 'reservation_detail_screen.dart';
@@ -115,8 +116,9 @@ class FlotillaScreen extends StatelessWidget {
                     } else if (foto is Map && foto['url'] != null) {
                       imageUrl = foto['url'];
                     } else if (foto is String) {
-                      imageUrl =
-                          "https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/flotilla/$foto";
+                      imageUrl = Supabase.instance.client.storage
+                          .from('flotilla')
+                          .getPublicUrl(foto);
                     }
                   }
 

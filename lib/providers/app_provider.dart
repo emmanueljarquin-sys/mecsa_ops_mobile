@@ -52,14 +52,16 @@ class AppProvider extends ChangeNotifier {
       // Fetch completo de datos del empleado
       final res = await _supabase
           .from('Empleados')
-          .select() // Trae todas las columnas
+          .select()
           .eq('email', user!.email!)
           .maybeSingle();
 
       if (res != null) {
         currentEmployeeId = res['id'].toString();
-        currentEmployeeData = res; // Guardamos todo el objeto
-        notifyListeners(); // Notificar cambios para que UI se actualice
+        currentEmployeeData = res;
+        notifyListeners();
+      } else {
+        // No employee found, currentEmployeeId remains null
       }
     } catch (e) {
       debugPrint("Error fetching employee ID: $e");
@@ -304,8 +306,10 @@ class AppProvider extends ChangeNotifier {
               } else if (foto is Map && foto['url'] != null) {
                 imageUrl = foto['url'];
               } else if (foto is String) {
-                imageUrl =
-                    "https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/flotilla/$foto";
+                // Obtener URL pública desde el cliente para evitar URLs hardcodeadas
+                imageUrl = _supabase.storage
+                    .from('flotilla')
+                    .getPublicUrl(foto);
               }
             }
 
@@ -477,10 +481,22 @@ class AppProvider extends ChangeNotifier {
     try {
       final res = await _supabase
           .from('Empleados')
-          .select('id, nombre_completo')
-          .order('nombre_completo', ascending: true);
+          .select('id, nombre, apellido')
+          .order('nombre', ascending: true);
 
-      employees = List<Map<String, dynamic>>.from(res);
+      employees = (res as List)
+          .map((e) {
+            final n = e['nombre'] ?? '';
+            final a = e['apellido'] ?? '';
+            return {
+              'id': e['id'],
+              'nombre_completo': "$n $a".trim().isNotEmpty
+                  ? "$n $a"
+                  : "Empleado #${e['id']}",
+            };
+          })
+          .toList()
+          .cast<Map<String, dynamic>>();
     } catch (e) {
       debugPrint("Error loading employees: $e");
       employees = [];

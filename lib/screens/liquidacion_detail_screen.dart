@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/liquidacion.dart';
 import '../services/liquidaciones_service.dart';
 
@@ -474,7 +475,9 @@ class _FacturaItem extends StatelessWidget {
 
   Future<void> _viewDocument(String path) async {
     final url = Uri.parse(
-      'https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/facturas_viaticos/$path',
+      Supabase.instance.client.storage
+          .from('facturas_viaticos')
+          .getPublicUrl(path),
     );
     try {
       if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {

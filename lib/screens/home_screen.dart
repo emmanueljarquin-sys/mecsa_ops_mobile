@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_provider.dart';
 import '../widgets/bottom_nav.dart';
 import 'flotilla_screen.dart';
@@ -88,8 +89,8 @@ class DashboardTab extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  "https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/app/icon_Mecsa.png",
+                child: Image.asset(
+                  'assets/images/logo_mecsa_ops.jpg',
                   width: 40,
                   height: 40,
                   fit: BoxFit.cover,
@@ -317,7 +318,11 @@ class DashboardTab extends StatelessWidget {
                                       .toString()
                                       .startsWith('http')
                                   ? nextReservation['vehiculos']['foto']
-                                  : "https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/flotilla/${nextReservation['vehiculos']['foto']}",
+                                  : Supabase.instance.client.storage
+                                        .from('flotilla')
+                                        .getPublicUrl(
+                                          nextReservation['vehiculos']['foto'],
+                                        ),
                               fit: BoxFit.cover,
                               errorBuilder: (ctx, _, __) => const Icon(
                                 Icons.directions_car,

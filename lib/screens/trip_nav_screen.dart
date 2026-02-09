@@ -52,6 +52,8 @@ class _TripNavScreenState extends State<TripNavScreen> {
   BitmapDescriptor? _carIcon;
   StreamSubscription<MagnetometerEvent>? _magnetometerSubscription;
   double _heading = 0.0;
+  List<LatLng> _polylinePoints = [];
+  int _offRouteCount = 0; // Contador para evitar recalculos por picos de GPS
 
   @override
   void initState() {
@@ -280,9 +282,22 @@ class _TripNavScreenState extends State<TripNavScreen> {
             _updateMarkerRotation();
           });
 
+          // Actualizar polilínea (borrar tramos recorridos) y check de desvío
+          _updateDynamicRoute(newPos);
+
           if (_controller.isCompleted) {
             final controller = await _controller.future;
-            controller.animateCamera(CameraUpdate.newLatLng(newPos));
+            // Usar animateCamera con zoom, bearing y tilt para vista de conducción
+            controller.animateCamera(
+              CameraUpdate.newCameraPosition(
+                CameraPosition(
+                  target: newPos,
+                  zoom: 17,
+                  tilt: 45, // Inclinación para ver el horizonte
+                  bearing: position.heading, // Orientar hacia el movimiento
+                ),
+              ),
+            );
           }
 
           // --- ACTUALIZAR INSTRUCCIÓN ACTUAL ---
@@ -385,12 +400,17 @@ class _TripNavScreenState extends State<TripNavScreen> {
                 "Bienvenido $userName, iniciaremos el viaje. $_nextInstruction en $_distanceToNext",
               );
             }
+            _polylinePoints = polylinePoints;
+            _polylines.clear();
             _polylines.add(
               Polyline(
                 polylineId: const PolylineId('route'),
-                points: polylinePoints,
+                points: _polylinePoints,
                 color: Theme.of(context).primaryColor,
                 width: 6,
+                jointType: JointType.round,
+                startCap: Cap.roundCap,
+                endCap: Cap.roundCap,
               ),
             );
 
@@ -909,6 +929,62 @@ class _TripNavScreenState extends State<TripNavScreen> {
         _distanceToNext = metersToEnd > 1000
             ? "${(metersToEnd / 1000).toStringAsFixed(1)} km"
             : "${metersToEnd.toInt()} m";
+      });
+    }
+  }
+
+  void _updateDynamicRoute(LatLng currentPos) {
+    if (_polylinePoints.isEmpty) return;
+
+    // 1. Borrar puntos de la polilínea que ya pasamos
+    // Buscamos el punto más cercano en la lista para saber en qué tramo estamos
+    int closestIndex = -1;
+    double minDistance = double.infinity;
+
+    for (int i = 0; i < _polylinePoints.length && i < 20; i++) {
+      // Revisamos solo los primeros 20 para performance
+      double d = Geolocator.distanceBetween(
+        currentPos.latitude,
+        currentPos.longitude,
+        _polylinePoints[i].latitude,
+        _polylinePoints[i].longitude,
+      );
+      if (d < minDistance) {
+        minDistance = d;
+        closestIndex = i;
+      }
+    }
+
+    // Si estamos lejos de toda la polilínea (> 60m), podríamos estar desviados
+    if (minDistance > 60) {
+      _offRouteCount++;
+      if (_offRouteCount > 3) {
+        // 3 lecturas seguidas desviado = recalcular
+        print("TripNav: [OFF-ROUTE] Recalculando ruta...");
+        _offRouteCount = 0;
+        _loadRoute();
+        return;
+      }
+    } else {
+      _offRouteCount = 0;
+    }
+
+    // Si el punto más cercano no es el primero, recortamos la polilínea
+    if (closestIndex > 0) {
+      setState(() {
+        _polylinePoints.removeRange(0, closestIndex);
+        _polylines.clear();
+        _polylines.add(
+          Polyline(
+            polylineId: const PolylineId('route'),
+            points: _polylinePoints,
+            color: Theme.of(context).primaryColor,
+            width: 6,
+            jointType: JointType.round,
+            startCap: Cap.roundCap,
+            endCap: Cap.roundCap,
+          ),
+        );
       });
     }
   }

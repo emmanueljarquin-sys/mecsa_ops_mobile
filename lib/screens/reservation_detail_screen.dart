@@ -29,8 +29,9 @@ class ReservationDetailScreen extends StatelessWidget {
       } else if (foto is Map && foto['url'] != null) {
         imageUrl = foto['url'];
       } else if (foto is String) {
-        imageUrl =
-            "https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/flotilla/$foto";
+        imageUrl = Supabase.instance.client.storage
+            .from('flotilla')
+            .getPublicUrl(foto);
       }
     }
 

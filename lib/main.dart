@@ -24,8 +24,13 @@ void main() async {
     anonKey: 'sb_publishable_G6dRjvRfALqwuYaG1kew7w_Xud8hTgb',
   );
 
-  await Firebase.initializeApp();
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  } catch (e) {
+    print("Firebase initialization failed: $e");
+    // La app puede continuar sin Firebase en modo degradado
+  }
 
   runApp(const MecsaOpsApp());
 }
