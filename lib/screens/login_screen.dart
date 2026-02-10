@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
 import '../providers/app_provider.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
@@ -14,145 +16,503 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _nombreController = TextEditingController();
+  final _apellidoController = TextEditingController();
+  final _telefonoController = TextEditingController();
+  int? _selectedDepartamentoId;
+  File? _photoFile;
+  bool _isLogin = true;
   bool _isLoading = false;
+  bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _nombreController.dispose();
+    _apellidoController.dispose();
+    _telefonoController.dispose();
+    super.dispose();
+  }
+
+  void _toggleAuthMode() {
+    setState(() {
+      _isLogin = !_isLogin;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<AppProvider>(context);
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 80),
-              // Logo Placeholder
-              const Icon(
-                Icons.business,
-                size: 80,
-                color: AppTheme.primaryColor,
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                "MecsaOPS",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "Inicia sesión para continuar",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 48),
-
-              // Email
-              TextFormField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: "Correo Electrónico",
-                  prefixIcon: Icon(Icons.email_outlined),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Password
-              TextFormField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: "Contraseña",
-                  prefixIcon: Icon(Icons.lock_outline),
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Button
-              SizedBox(
-                height: 50,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppTheme.primaryColor, Color(0xFF0F172A)],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Branding Section
+                  Hero(
+                    tag: 'logo',
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 15,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Image.asset(
+                          'assets/images/logo_mecsa_ops.jpg',
+                          height: 100,
+                          width: 100,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                                Icons.business_rounded,
+                                size: 80,
+                                color: Colors.white,
+                              ),
+                        ),
+                      ),
                     ),
                   ),
-                  onPressed: _isLoading ? null : () => _handleLogin(provider),
-                  child: _isLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text(
-                          "INGRESAR",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                ),
-              ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    "MecsaOPS",
+                    style: TextStyle(
+                      fontSize: 40,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: -1,
+                    ),
+                  ),
+                  Text(
+                    "Centro de Operaciones Inteligente",
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.white.withOpacity(0.6),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 40),
 
-              if (provider.errorMessage != null) ...[
-                const SizedBox(height: 24),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red[100]!),
+                  // Auth Card
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(32),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(32),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 40,
+                            offset: const Offset(0, 20),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            _isLogin ? "Bienvenido de nuevo" : "Crea tu cuenta",
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _isLogin
+                                ? "Ingresa tus credenciales para continuar"
+                                : "Ingresa tus datos para registrarte",
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+
+                          if (!_isLogin) ...[
+                            _buildPhotoPicker(),
+                            const SizedBox(height: 24),
+                            _buildTextField(
+                              controller: _nombreController,
+                              label: "Nombre",
+                              icon: Icons.person_outline_rounded,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _apellidoController,
+                              label: "Apellido",
+                              icon: Icons.person_outline_rounded,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _telefonoController,
+                              label: "Teléfono",
+                              icon: Icons.phone_android_rounded,
+                              keyboardType: TextInputType.phone,
+                            ),
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<int>(
+                              isExpanded: true,
+                              isDense: true,
+                              value: _selectedDepartamentoId,
+                              items: provider.departments.map((dep) {
+                                return DropdownMenuItem<int>(
+                                  value: dep['id'],
+                                  child: Text(
+                                    dep['nombre'] ?? 'Sin nombre',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                setState(() => _selectedDepartamentoId = val);
+                              },
+                              decoration: const InputDecoration(
+                                labelText: "Departamento",
+                                prefixIcon: Icon(
+                                  Icons.business_rounded,
+                                  color: AppTheme.secondaryColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          _buildTextField(
+                            controller: _emailController,
+                            label: "Correo Electrónico",
+                            icon: Icons.alternate_email_rounded,
+                            keyboardType: TextInputType.emailAddress,
+                          ),
+                          const SizedBox(height: 16),
+
+                          _buildTextField(
+                            controller: _passwordController,
+                            label: "Contraseña",
+                            icon: Icons.lock_outline_rounded,
+                            isPassword: true,
+                            obscureText: _obscurePassword,
+                            onToggleVisibility: () {
+                              setState(
+                                () => _obscurePassword = !_obscurePassword,
+                              );
+                            },
+                          ),
+
+                          if (_isLogin)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () {},
+                                child: const Text(
+                                  "¿Olvidaste tu contraseña?",
+                                  style: TextStyle(
+                                    color: AppTheme.accentColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          const SizedBox(height: 32),
+
+                          // Main Action Button
+                          SizedBox(
+                            height: 60,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _isLogin
+                                    ? AppTheme.primaryColor
+                                    : AppTheme.successColor,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              onPressed: _isLoading
+                                  ? null
+                                  : () => _handleAuth(provider),
+                              child: _isLoading
+                                  ? const CircularProgressIndicator(
+                                      color: Colors.white,
+                                    )
+                                  : Text(
+                                      _isLogin
+                                          ? "INICIAR SESIÓN"
+                                          : "CREAR CUENTA",
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // Toggle Auth Mode
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                _isLogin
+                                    ? "¿No tienes cuenta? "
+                                    : "¿Ya tienes cuenta? ",
+                                style: TextStyle(color: Colors.grey[600]),
+                              ),
+                              GestureDetector(
+                                onTap: _toggleAuthMode,
+                                child: Text(
+                                  _isLogin ? "Regístrate" : "Inicia Sesión",
+                                  style: const TextStyle(
+                                    color: AppTheme.primaryColor,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  child: Text(
-                    "${provider.errorMessage}",
-                    style: TextStyle(color: Colors.red[700]),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
-            ],
+
+                  // Error Message
+                  if (provider.errorMessage != null) ...[
+                    const SizedBox(height: 24),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.red[100]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.error_outline_rounded,
+                            color: Colors.red[700],
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              provider.errorMessage!,
+                              style: TextStyle(
+                                color: Colors.red[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 48),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Future<void> _handleLogin(AppProvider provider) async {
-    setState(() => _isLoading = true);
+  Widget _buildPhotoPicker() {
+    return GestureDetector(
+      onTap: _pickImage,
+      child: Center(
+        child: Stack(
+          children: [
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  width: 2,
+                ),
+                image: _photoFile != null
+                    ? DecorationImage(
+                        image: FileImage(_photoFile!),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
+              ),
+              child: _photoFile == null
+                  ? Icon(
+                      Icons.add_a_photo_rounded,
+                      color: Colors.grey[400],
+                      size: 32,
+                    )
+                  : null,
+            ),
+            if (_photoFile != null)
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: AppTheme.primaryColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.edit_rounded,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
+    if (pickedFile != null) {
+      setState(() {
+        _photoFile = File(pickedFile.path);
+      });
+    }
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    bool isPassword = false,
+    bool obscureText = false,
+    VoidCallback? onToggleVisibility,
+    TextInputType? keyboardType,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      keyboardType: keyboardType,
+      style: const TextStyle(
+        fontWeight: FontWeight.w600,
+        color: Color(0xFF1E293B),
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: AppTheme.secondaryColor),
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  obscureText
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  color: Colors.grey,
+                ),
+                onPressed: onToggleVisibility,
+              )
+            : null,
+      ),
+    );
+  }
+
+  Future<void> _handleAuth(AppProvider provider) async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
+    final nombre = _nombreController.text.trim();
+    final apellido = _apellidoController.text.trim();
+    final telefono = _telefonoController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
+    if (email.isEmpty ||
+        password.isEmpty ||
+        (!_isLogin &&
+            (nombre.isEmpty ||
+                apellido.isEmpty ||
+                telefono.isEmpty ||
+                _selectedDepartamentoId == null))) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Por favor completa todos los campos")),
       );
-      setState(() => _isLoading = false);
       return;
     }
 
-    final success = await provider.signIn(email, password);
+    setState(() => _isLoading = true);
 
-    if (success && mounted) {
-      // Navigate to Home replacing Login
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const HomeScreen()));
+    bool success;
+    if (_isLogin) {
+      success = await provider.signIn(email, password);
     } else {
-      setState(() => _isLoading = false);
+      success = await provider.signUp(
+        email: email,
+        password: password,
+        nombre: nombre,
+        apellido: apellido,
+        telefono: telefono,
+        departamentoId: _selectedDepartamentoId!,
+        photoFile: _photoFile,
+      );
     }
+
+    if (!mounted) return;
+
+    if (success) {
+      if (_isLogin) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      } else {
+        setState(() => _isLogin = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "Cuenta creada. Su acceso está pendiente a confirmar por un administrador.",
+            ),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      }
+    }
+
+    setState(() => _isLoading = false);
   }
 }

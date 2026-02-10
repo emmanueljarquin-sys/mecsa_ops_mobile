@@ -436,7 +436,9 @@ class DashboardTab extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        emp?['departamento'] ?? provider.user?.email ?? '',
+                        emp?['departamento']?.toString() ??
+                            provider.user?.email ??
+                            '',
                         style: TextStyle(color: Colors.grey[600], fontSize: 13),
                         overflow: TextOverflow.ellipsis,
                       ),

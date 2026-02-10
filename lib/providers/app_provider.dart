@@ -27,6 +27,8 @@ class AppProvider extends ChangeNotifier {
   List<Map<String, dynamic>> projects = [];
   List<Map<String, dynamic>> myReservations = [];
   List<Map<String, dynamic>> employees = [];
+  List<Map<String, dynamic>> departments =
+      []; // Nuevo: Departamentos para registro
   String? currentEmployeeId;
   Map<String, dynamic>?
   currentEmployeeData; // Nuevo: Datos completos del perfil
@@ -57,6 +59,10 @@ class AppProvider extends ChangeNotifier {
           .maybeSingle();
 
       if (res != null) {
+        if (res['activo'] == false) {
+          await _supabase.auth.signOut();
+          throw "Cuenta desactivada por un administrador.";
+        }
         currentEmployeeId = res['id'].toString();
         currentEmployeeData = res;
         notifyListeners();
@@ -65,6 +71,10 @@ class AppProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint("Error fetching employee ID: $e");
+      if (e.toString().contains("desactivada")) {
+        errorMessage = e.toString();
+        rethrow;
+      }
     }
   }
 
@@ -183,6 +193,7 @@ class AppProvider extends ChangeNotifier {
   Future<bool> signIn(String email, String password) async {
     try {
       isLoading = true;
+      errorMessage = null;
       notifyListeners();
 
       final response = await _supabase.auth.signInWithPassword(
@@ -191,12 +202,112 @@ class AppProvider extends ChangeNotifier {
       );
 
       if (response.user != null) {
+        // Verificar si el empleado está activo
+        final empRes = await _supabase
+            .from('Empleados')
+            .select('activo')
+            .eq('email', email)
+            .maybeSingle();
+
+        if (empRes != null && empRes['activo'] == false) {
+          await _supabase.auth.signOut();
+          throw "Su cuenta está pendiente de activación por un administrador.";
+        }
         return true;
       }
       return false;
     } catch (e) {
       debugPrint("Login error: $e");
-      errorMessage = "Error al iniciar sesión: ${e.toString()}";
+      errorMessage = e.toString().contains("pendiente de activación")
+          ? e.toString()
+          : "Error al iniciar sesión: ${e.toString()}";
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> signUp({
+    required String email,
+    required String password,
+    required String nombre,
+    required String apellido,
+    required String telefono,
+    required int departamentoId,
+    File? photoFile,
+  }) async {
+    try {
+      isLoading = true;
+      errorMessage = null;
+      notifyListeners();
+
+      // 1. Obtener el último código de empleado para el correlativo (GM-XXX)
+      final lastEmployee = await _supabase
+          .from('Empleados')
+          .select('codigo_empleado')
+          .like('codigo_empleado', 'GM-%')
+          .order('id', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      int nextCode = 1;
+      if (lastEmployee != null && lastEmployee['codigo_empleado'] != null) {
+        final lastCodeStr = lastEmployee['codigo_empleado'].toString();
+        // Extraer número después del prefijo GM-
+        final parts = lastCodeStr.split('-');
+        if (parts.length > 1) {
+          final numberPart = parts.last;
+          final lastCodeNum = int.tryParse(numberPart);
+          if (lastCodeNum != null) {
+            nextCode = lastCodeNum + 1;
+          }
+        }
+      }
+      final String codigoEmpleado = "GM-${nextCode.toString().padLeft(3, '0')}";
+
+      // 2. Registrar en auth.users
+      final response = await _supabase.auth.signUp(
+        email: email,
+        password: password,
+        data: {'full_name': "$nombre $apellido"},
+      );
+
+      if (response.user == null) throw "Error al crear usuario en Auth";
+
+      // 3. Subir foto solo si se proporciona
+      String? photoUrl;
+      if (photoFile != null) {
+        final fileExt = photoFile.path.split('.').last;
+        final fileName =
+            'register_${response.user!.id}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+        final filePath = 'temp_registration/$fileName';
+
+        await _supabase.storage.from('empleados').upload(filePath, photoFile);
+        photoUrl = _supabase.storage.from('empleados').getPublicUrl(filePath);
+      }
+
+      // 4. Crear registro en la tabla Empleados
+      await _supabase.from('Empleados').insert({
+        'codigo_empleado': codigoEmpleado,
+        'nombre': nombre,
+        'apellido': apellido,
+        'email': email,
+        'telefono': telefono,
+        'departamento': departamentoId,
+        'id_user': response.user!.id,
+        'activo': false,
+        if (photoUrl != null) 'photo': photoUrl,
+      });
+
+      // Importante: Cerrar sesión inmediatamente para que no entre a la App
+      // hasta que el administrador lo apruebe.
+      await _supabase.auth.signOut();
+
+      return true;
+    } catch (e) {
+      debugPrint("SignUp error: $e");
+      errorMessage = "Error al crear cuenta: ${e.toString()}";
       return false;
     } finally {
       isLoading = false;
@@ -214,12 +325,16 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> fetchData() async {
-    if (user == null) return;
     isLoading = true;
     errorMessage = null;
     notifyListeners();
 
     try {
+      // Siempre intentar cargar departamentos (necesario para registro)
+      await fetchDepartments();
+
+      if (user == null) return;
+
       // 1. First lookup Employee ID (needed for reservations/viaticos filtering)
       await _fetchCurrentEmployeeId();
 
@@ -234,11 +349,15 @@ class AppProvider extends ChangeNotifier {
       ]);
     } catch (e) {
       debugPrint("Error fetching data: $e");
-      errorMessage = "Error de conexión: $e";
+      if (user != null) {
+        errorMessage = e.toString().contains("desactivada")
+            ? e.toString()
+            : "Error de conexión: $e";
+      }
     } finally {
       isLoading = false;
       notifyListeners();
-      _subscribeToLiquidaciones();
+      if (user != null) _subscribeToLiquidaciones();
     }
   }
 
@@ -318,7 +437,7 @@ class AppProvider extends ChangeNotifier {
                   "${v['marca'] ?? ''} ${v['modelo'] ?? 'Vehículo'}", // Safe access
               'id': v['id'].toString(), // Force String
               'plate': v['placa'] ?? 'S/P',
-              'year': v['year'] ?? '',
+              'year': v['year']?.toString() ?? '',
               'status': _mapStatus(v['estado']),
               'image': imageUrl,
               'estado': v['estado'] ?? 'Desconocido',
@@ -500,6 +619,22 @@ class AppProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint("Error loading employees: $e");
       employees = [];
+    }
+  }
+
+  Future<void> fetchDepartments() async {
+    try {
+      final res = await _supabase
+          .schema('cms')
+          .from('departamento')
+          .select('id, nombre')
+          .order('nombre', ascending: true);
+
+      departments = List<Map<String, dynamic>>.from(res as List);
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Error loading departments: $e");
+      departments = [];
     }
   }
 

@@ -20,8 +20,9 @@ void main() async {
   await initializeDateFormatting('es_MX', null);
 
   await Supabase.initialize(
-    url: 'https://awhuzekjpoapamijlvua.supabase.co',
-    anonKey: 'sb_publishable_G6dRjvRfALqwuYaG1kew7w_Xud8hTgb',
+    url: 'https://uawawiglqywhwkvoxpvm.supabase.co',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhd2F3aWdscXl3aHdrdm94cHZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0MDA1NzYsImV4cCI6MjA4NTk3NjU3Nn0.cHgMDVQcr7ZkS7bHbyIgk0efEXg2CIZYpUgSVZ_L_kQ',
   );
 
   try {

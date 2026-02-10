@@ -160,7 +160,7 @@ class ProfileScreen extends StatelessWidget {
                   border: Border.all(color: Colors.blue.withOpacity(0.3)),
                 ),
                 child: Text(
-                  emp!['departamento'],
+                  emp!['departamento'].toString(),
                   style: TextStyle(
                     color: Colors.blue[800],
                     fontSize: 12,
@@ -180,7 +180,7 @@ class ProfileScreen extends StatelessWidget {
             _ProfileItem(
               icon: Icons.apartment_outlined,
               title: "Departamento",
-              value: emp?['departamento'] ?? "Sin asignar",
+              value: emp?['departamento']?.toString() ?? "Sin asignar",
             ),
             const Divider(),
             _ProfileItem(
