@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../providers/app_provider.dart';
 import '../models/liquidacion.dart';
 import '../services/liquidaciones_service.dart';
 import 'liquidacion_detail_screen.dart';
@@ -44,7 +46,12 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
           ? null
           : selectedFilter;
 
+      // Filtrar por el empleado autenticado
+      final provider = Provider.of<AppProvider>(context, listen: false);
+      final empleadoId = provider.currentEmployeeId;
+
       final result = await LiquidacionesService.getLiquidaciones(
+        empleadoId: empleadoId,
         estado: estadoFilter,
         page: currentPage,
         limit: 20,

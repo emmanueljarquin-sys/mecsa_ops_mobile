@@ -4,7 +4,8 @@ import '../models/liquidacion.dart';
 
 class LiquidacionesService {
   // Cambiar esta URL por la URL de tu servidor
-  static const String baseUrl = 'https://grupomecsa.net/MecsaOPS/api';
+  // Actualizado: usar ruta 'ops' en lugar de 'MecsaOPS'
+  static const String baseUrl = 'https://grupomecsa.net/ops/api';
 
   // Obtener lista de liquidaciones con filtros
   static Future<Map<String, dynamic>> getLiquidaciones({
