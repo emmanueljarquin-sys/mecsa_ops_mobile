@@ -267,12 +267,10 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
           children: [
             _buildNumberField(
               _kilometrajeController,
-              widget.tipo == 'entrada'
-                  ? "Kilometraje Calculado Automáticamente"
-                  : "Kilometraje Total (Tablero)",
+              "Kilometraje Total (Tablero)",
               Icons.speed,
               "km",
-              enabled: widget.tipo == 'salida',
+              enabled: true,
               onChanged: (v) {
                 if (mounted) setState(() {});
               },

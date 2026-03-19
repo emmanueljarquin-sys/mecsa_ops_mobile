@@ -21,6 +21,7 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
   final _notasController = TextEditingController();
   final _direccionController = TextEditingController();
   final _fechaController = TextEditingController();
+  final _projectController = TextEditingController();
 
   String? _selectedProjectId;
   String _tipoVisita = 'cliente';
@@ -46,6 +47,19 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
       _destinos = List<Map<String, dynamic>>.from(
         widget.visita!['destinos'] ?? [],
       );
+      
+      // Buscar nombre del proyecto si existe
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_selectedProjectId != null) {
+          final provider = context.read<AppProvider>();
+          try {
+            final p = provider.projects.firstWhere(
+              (p) => p['id'].toString() == _selectedProjectId,
+            );
+            setState(() => _projectController.text = "${p['id']} - ${p['name']}");
+          } catch (_) {}
+        }
+      });
     } else {
       _fechaController.text = DateTime.now().toString().substring(0, 10);
       _getCurrentLocation();
@@ -177,19 +191,13 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
               const SizedBox(height: 16),
 
               _buildLabel("PROYECTO (OPCIONAL)"),
-              DropdownButtonFormField<String>(
-                value: _selectedProjectId,
-                decoration: _inputDecoration("Selecciona un proyecto"),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text("Ninguno")),
-                  ...provider.projects.map(
-                    (p) => DropdownMenuItem(
-                      value: p['id'].toString(),
-                      child: Text(p['name'] ?? 'Proyecto'),
-                    ),
-                  ),
-                ],
-                onChanged: (v) => setState(() => _selectedProjectId = v),
+              TextFormField(
+                controller: _projectController,
+                readOnly: true,
+                decoration: _inputDecoration("Selecciona un proyecto").copyWith(
+                  suffixIcon: const Icon(Icons.arrow_drop_down),
+                ),
+                onTap: () => _showProjectSearch(context, provider.projects),
               ),
               const SizedBox(height: 16),
 
@@ -366,12 +374,61 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
     }
   }
 
+  void _showProjectSearch(
+    BuildContext context,
+    List<Map<String, dynamic>> projects, {
+    Function(String?, String?)? onSelectOverride,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.9,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return _ProjectSearchModal(
+              projects: projects,
+              scrollController: scrollController,
+              onSelect: (id, name) {
+                if (onSelectOverride != null) {
+                  onSelectOverride(id, name);
+                } else {
+                  setState(() {
+                    _selectedProjectId = id;
+                    _projectController.text = id != null ? "$id - $name" : "";
+                  });
+                }
+                Navigator.pop(context);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showEditStopDialog(Map<String, dynamic> stop, int index) {
     final clientCtrl = TextEditingController(text: stop['cliente']);
+    final projCtrl = TextEditingController();
     String tipo = stop['tipo_visita'] ?? 'cliente';
     String estado = stop['estado'] ?? 'programada';
     String? projId = stop['proyecto_id']?.toString();
     final provider = context.read<AppProvider>();
+
+    if (projId != null) {
+      try {
+        final p = provider.projects.firstWhere(
+          (p) => p['id'].toString() == projId,
+        );
+        projCtrl.text = "${p['id']} - ${p['name']}";
+      } catch (_) {}
+    }
 
     showDialog(
       context: context,
@@ -410,19 +467,22 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
                 ),
                 const SizedBox(height: 12),
                 _buildLabel("PROYECTO"),
-                DropdownButtonFormField<String>(
-                  value: projId,
-                  decoration: _inputDecoration(""),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text("Ninguno")),
-                    ...provider.projects.map(
-                      (p) => DropdownMenuItem(
-                        value: p['id'].toString(),
-                        child: Text(p['name'] ?? 'Proyecto'),
-                      ),
-                    ),
-                  ],
-                  onChanged: (v) => setDialogState(() => projId = v),
+                TextFormField(
+                  controller: projCtrl,
+                  readOnly: true,
+                  decoration: _inputDecoration("Buscar proyecto...").copyWith(
+                    suffixIcon: const Icon(Icons.arrow_drop_down),
+                  ),
+                  onTap: () => _showProjectSearch(
+                    context,
+                    provider.projects,
+                    onSelectOverride: (id, name) {
+                      setDialogState(() {
+                        projId = id;
+                        projCtrl.text = id != null ? "$id - $name" : "";
+                      });
+                    },
+                  ),
                 ),
               ],
             ),
@@ -691,6 +751,105 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: Colors.grey[200]!),
       ),
+    );
+  }
+}
+
+class _ProjectSearchModal extends StatefulWidget {
+  final List<Map<String, dynamic>> projects;
+  final ScrollController scrollController;
+  final Function(String?, String?) onSelect;
+
+  const _ProjectSearchModal({
+    required this.projects,
+    required this.scrollController,
+    required this.onSelect,
+  });
+
+  @override
+  State<_ProjectSearchModal> createState() => _ProjectSearchModalState();
+}
+
+class _ProjectSearchModalState extends State<_ProjectSearchModal> {
+  List<Map<String, dynamic>> _filteredProjects = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredProjects = widget.projects;
+  }
+
+  void _filter(String query) {
+    setState(() {
+      if (query.isEmpty) {
+        _filteredProjects = widget.projects;
+      } else {
+        _filteredProjects = widget.projects.where((p) {
+          final name = (p['name'] ?? '').toString().toLowerCase();
+          final id = (p['id'] ?? '').toString().toLowerCase();
+          final q = query.toLowerCase();
+          return name.contains(q) || id.contains(q);
+        }).toList();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Center(
+          child: Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: TextField(
+            onChanged: _filter,
+            decoration: InputDecoration(
+              prefixIcon: const Icon(Icons.search),
+              hintText: "Buscar por número o nombre...",
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              filled: true,
+              fillColor: Colors.grey[100],
+            ),
+          ),
+        ),
+        ListTile(
+          leading: const Icon(Icons.block, color: Colors.grey),
+          title: const Text("Ninguno / Sin proyecto"),
+          onTap: () => widget.onSelect(null, null),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView.separated(
+            controller: widget.scrollController,
+            itemCount: _filteredProjects.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final p = _filteredProjects[index];
+              final id = p['id']?.toString() ?? '';
+              final name = p['name'] ?? 'Sin Título';
+              return ListTile(
+                title: Text(
+                  "$id - $name",
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                onTap: () => widget.onSelect(id, name),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

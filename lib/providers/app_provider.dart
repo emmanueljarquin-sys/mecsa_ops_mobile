@@ -638,6 +638,23 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  String getDepartmentName(dynamic id) {
+    if (id == null) return "Sin asignar";
+    try {
+      final deptId = int.tryParse(id.toString());
+      if (deptId == null) return id.toString();
+
+      final dept = departments.firstWhere(
+        (d) => d['id'].toString() == deptId.toString(),
+        orElse: () => {},
+      );
+
+      return dept['nombre'] ?? id.toString();
+    } catch (e) {
+      return id.toString();
+    }
+  }
+
   Future<bool> createReservation(Map<String, dynamic> reservationData) async {
     try {
       isLoading = true;
@@ -658,6 +675,17 @@ class AppProvider extends ChangeNotifier {
       final String vehiculoId = reservationData['vehiculo_id'].toString();
       final String startStr = reservationData['fecha_salida'];
       final String endStr = reservationData['fecha_regreso'];
+
+      // NUEVO: Verificar estado actual del vehículo en la lista local para evitar reservas directas
+      try {
+        final veh = vehiculos.firstWhere((v) => v['id'] == vehiculoId);
+        if (veh['status'] != 'available') {
+          throw "Este vehículo ya no está disponible (${veh['estado']}).";
+        }
+      } catch (e) {
+        if (e is String) rethrow;
+        // Si no está en la lista local, tal vez es nuevo, procedemos con cautela o ignoramos
+      }
 
       // Check for overlapping reservations
       // An overlap occurs if: (StartA < EndB) and (EndA > StartB)

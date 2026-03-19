@@ -626,6 +626,9 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
     final double kmInicial =
         double.tryParse(_visita['km_inicial']?.toString() ?? '0') ?? 0;
     final double kmFinalAuto = kmInicial + distRecorrida;
+    final kmFinalController = TextEditingController(
+      text: kmFinalAuto.toStringAsFixed(1),
+    );
 
     // Cálculo de duración
     int duracionAuto = 0;
@@ -644,9 +647,14 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
             children: [
               const Text("Detalles del cierre de visita:"),
               const SizedBox(height: 16),
-              _buildSection(
-                "Kilometraje Final (Auto)",
-                kmFinalAuto.toStringAsFixed(1),
+              TextField(
+                controller: kmFinalController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: "Kilometraje Final (Confirmar)",
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.speed, color: Colors.blue),
+                ),
               ),
               const SizedBox(height: 12),
               _buildSection("Duración Estimada (Auto)", "$duracionAuto min"),
@@ -706,7 +714,7 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                   .updateVisita(_visita['id'].toString(), {
                     'estado': 'completada',
                     'resultado': resultController.text,
-                    'km_final': kmFinalAuto.toStringAsFixed(1),
+                    'km_final': kmFinalController.text,
                     'duracion': duracionAuto.toString(),
                     'hora_fin': TimeOfDay.now().format(context),
                   });

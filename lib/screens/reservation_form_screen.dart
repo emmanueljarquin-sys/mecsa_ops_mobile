@@ -86,7 +86,9 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                     filled: true,
                     fillColor: Colors.grey[50],
                   ),
-                  items: vehiculos.map((v) {
+                  items: vehiculos
+                      .where((v) => v['status'] == 'available') // SOLAMENTE disponibles
+                      .map((v) {
                     return DropdownMenuItem<String>(
                       value: v['id'].toString(),
                       child: Text(
@@ -547,8 +549,10 @@ class _ProjectSearchModalState extends State<_ProjectSearchModal> {
         _filteredProjects = widget.projects;
       } else {
         _filteredProjects = widget.projects.where((p) {
-          final title = (p['name'] ?? '').toString().toLowerCase();
-          return title.contains(query.toLowerCase());
+          final name = (p['name'] ?? '').toString().toLowerCase();
+          final id = (p['id'] ?? '').toString().toLowerCase();
+          final q = query.toLowerCase();
+          return name.contains(q) || id.contains(q);
         }).toList();
       }
     });
@@ -594,15 +598,14 @@ class _ProjectSearchModalState extends State<_ProjectSearchModal> {
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final p = _filteredProjects[index];
+              final id = p['id']?.toString() ?? '';
+              final name = p['name'] ?? 'Sin Título';
               return ListTile(
                 title: Text(
-                  p['name'] ?? 'Sin Título',
+                  "$id - $name",
                   style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
-                onTap: () => widget.onSelect(
-                  p['id'].toString(),
-                  p['name'] ?? 'Sin Título',
-                ),
+                onTap: () => widget.onSelect(id, name),
               );
             },
           ),

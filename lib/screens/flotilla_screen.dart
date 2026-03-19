@@ -366,14 +366,25 @@ class _VehicleListCard extends StatelessWidget {
     bool isAvailable = data['status'] == 'available';
 
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ReservationFormScreen(vehicle: data),
-          ),
-        );
-      },
+      onTap: isAvailable
+          ? () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ReservationFormScreen(vehicle: data),
+                ),
+              );
+            }
+          : () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    "Este vehículo no está disponible (${data['estado']}).",
+                  ),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            },
       child: Card(
         margin: const EdgeInsets.only(bottom: 12),
         elevation: 0,
@@ -381,51 +392,66 @@ class _VehicleListCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           side: BorderSide(color: Colors.grey.withOpacity(0.1)),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  data['image'],
-                  width: 70,
-                  height: 50,
-                  fit: BoxFit.cover,
-                  errorBuilder: (c, e, s) =>
-                      Container(width: 70, height: 50, color: Colors.grey[200]),
+        child: Opacity(
+          opacity: isAvailable ? 1.0 : 0.6,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    data['image'],
+                    width: 70,
+                    height: 50,
+                    fit: BoxFit.cover,
+                    errorBuilder: (c, e, s) => Container(
+                      width: 70,
+                      height: 50,
+                      color: Colors.grey[200],
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        data['name'],
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                      Text(
+                        "${data['plate']} ${data['year'] != '' ? '• ' + data['year'].toString() : ''}",
+                        style: TextStyle(color: Colors.blue[600], fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
                   children: [
-                    Text(
-                      data['name'],
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: isAvailable
+                            ? const Color(0xFF00C853)
+                            : const Color(0xFFF44336),
+                        shape: BoxShape.circle,
                       ),
                     ),
-                    Text(
-                      "${data['plate']} ${data['year'] != '' ? '• ' + data['year'].toString() : ''}",
-                      style: TextStyle(color: Colors.blue[600], fontSize: 13),
-                    ),
+                    if (!isAvailable)
+                      const Text(
+                        "Ocupado",
+                        style: TextStyle(fontSize: 8, color: Colors.red),
+                      ),
                   ],
                 ),
-              ),
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: isAvailable
-                      ? const Color(0xFF00C853)
-                      : const Color(0xFFF44336),
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

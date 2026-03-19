@@ -24,7 +24,16 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
   @override
   void initState() {
     super.initState();
-    _loadLiquidaciones();
+    // No cargamos aquí directamente, dejaremos que didChangeDependencies o un check inicial lo haga
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final provider = Provider.of<AppProvider>(context);
+    if (provider.currentEmployeeId != null && liquidaciones.isEmpty && !isLoading && error == null) {
+      _loadLiquidaciones();
+    }
   }
 
   Future<void> _loadLiquidaciones({bool refresh = false}) async {
@@ -42,13 +51,29 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
     });
 
     try {
+      final provider = Provider.of<AppProvider>(context, listen: false);
+      
+      // Esperar si el provider está cargando datos iniciales
+      if (provider.isLoading && provider.currentEmployeeId == null) {
+        setState(() => isLoading = true);
+        // Podríamos esperar un poco o simplemente dejar que el RefreshIndicator lo maneje
+        // pero lo ideal es no proceder si no hay ID aún.
+      }
+
+      final empleadoId = provider.currentEmployeeId;
+
+      if (empleadoId == null) {
+        print('UI DEBUG: No se puede cargar liquidaciones sin empleadoId');
+        setState(() {
+          isLoading = false;
+          error = "No se encontró tu perfil de empleado. Por favor, reintenta o contacta a soporte.";
+        });
+        return;
+      }
+
       final String? estadoFilter = selectedFilter == 'todos'
           ? null
           : selectedFilter;
-
-      // Filtrar por el empleado autenticado
-      final provider = Provider.of<AppProvider>(context, listen: false);
-      final empleadoId = provider.currentEmployeeId;
 
       final result = await LiquidacionesService.getLiquidaciones(
         empleadoId: empleadoId,

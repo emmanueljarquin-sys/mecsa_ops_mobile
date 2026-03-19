@@ -54,6 +54,7 @@ class _TripNavScreenState extends State<TripNavScreen> {
   double _heading = 0.0;
   List<LatLng> _polylinePoints = [];
   int _offRouteCount = 0; // Contador para evitar recalculos por picos de GPS
+  bool _isFirstRouteLoad = true; // Controlar mensaje de bienvenida
 
   @override
   void initState() {
@@ -396,9 +397,14 @@ class _TripNavScreenState extends State<TripNavScreen> {
                     "Colaborador Mecsa";
               }
 
-              _speak(
-                "Bienvenido $userName, iniciaremos el viaje. $_nextInstruction en $_distanceToNext",
-              );
+              if (_isFirstRouteLoad) {
+                _speak(
+                  "Bienvenido $userName, iniciaremos el viaje. $_nextInstruction en $_distanceToNext",
+                );
+                _isFirstRouteLoad = false;
+              } else {
+                _speak("Recalculando ruta. $_nextInstruction en $_distanceToNext");
+              }
             }
             _polylinePoints = polylinePoints;
             _polylines.clear();
