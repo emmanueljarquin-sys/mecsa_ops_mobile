@@ -234,7 +234,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             Align(
                               alignment: Alignment.centerRight,
                               child: TextButton(
-                                onPressed: () {},
+                                onPressed: _showForgotPasswordDialog,
                                 child: const Text(
                                   "¿Olvidaste tu contraseña?",
                                   style: TextStyle(
@@ -419,6 +419,96 @@ class _LoginScreenState extends State<LoginScreen> {
         _photoFile = File(pickedFile.path);
       });
     }
+  }
+
+  void _showForgotPasswordDialog() {
+    final emailController = TextEditingController(text: _emailController.text);
+    bool isDialogLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text("Recuperar Contraseña"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Ingresa tu correo para recibir un enlace de recuperación.",
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: emailController,
+                decoration: const InputDecoration(
+                  labelText: "Correo Electrónico",
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                enabled: !isDialogLoading,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: isDialogLoading ? null : () => Navigator.pop(context),
+              child: const Text("CANCELAR"),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: isDialogLoading
+                  ? null
+                  : () async {
+                      final email = emailController.text.trim();
+                      if (email.isEmpty) return;
+
+                      setDialogState(() => isDialogLoading = true);
+
+                      final provider = Provider.of<AppProvider>(
+                        context,
+                        listen: false,
+                      );
+                      final success = await provider.requestPasswordReset(email);
+
+                      if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              success
+                                  ? "Se ha enviado un correo con instrucciones."
+                                  : provider.errorMessage ??
+                                      "Error al solicitar recuperación.",
+                            ),
+                            backgroundColor:
+                                success ? AppTheme.successColor : Colors.red,
+                          ),
+                        );
+                      }
+                    },
+              child: isDialogLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text("ENVIAR ENLACE"),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildTextField({

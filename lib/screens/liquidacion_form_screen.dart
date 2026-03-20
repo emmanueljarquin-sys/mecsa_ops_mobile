@@ -33,6 +33,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
   List<Proyecto> _filteredProyectos = [];
   List<Empleado> _filteredEmpleados = [];
   List<Empleado> _selectedPersonal = [];
+  List<String> _manualPersonnel = []; // Nombres manuales fuera de la lista de empleados
 
   String get _selectedProyectoLabel {
     if (_selectedProyectoId == null) return 'Seleccione un proyecto';
@@ -361,32 +362,72 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                   ),
                 ),
                 Expanded(
-                  child: ListView.separated(
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final e = filtered[index];
-                      final isSelected = _selectedPersonal.any(
-                        (p) => p.id == e.id,
-                      );
-                      return CheckboxListTile(
-                        title: Text(e.nombreCompleto),
-                        subtitle: Text(e.departamento ?? ''),
-                        value: isSelected,
-                        onChanged: (val) {
-                          setState(() {
-                            if (val == true) {
-                              _selectedPersonal.add(e);
-                            } else {
-                              _selectedPersonal.removeWhere(
-                                (p) => p.id == e.id,
-                              );
-                            }
-                          });
-                          setModalState(() {});
-                        },
-                      );
-                    },
+                  child: ListView(
+                    children: [
+                      if (localQuery.isNotEmpty &&
+                          !_empleados.any((e) =>
+                              e.nombreCompleto.toLowerCase() ==
+                              localQuery.toLowerCase()))
+                        CheckboxListTile(
+                          secondary:
+                              const Icon(Icons.person_add, color: Colors.blue),
+                          title: Text("Agregar '$localQuery'"),
+                          subtitle: const Text('Personal externo (manual)'),
+                          value: _manualPersonnel.contains(localQuery),
+                          onChanged: (val) {
+                            setState(() {
+                              if (val == true) {
+                                if (!_manualPersonnel.contains(localQuery)) {
+                                  _manualPersonnel.add(localQuery);
+                                }
+                              } else {
+                                _manualPersonnel.remove(localQuery);
+                              }
+                            });
+                            setModalState(() {});
+                          },
+                        ),
+                      ..._manualPersonnel
+                          .where((m) => m
+                              .toLowerCase()
+                              .contains(localQuery.toLowerCase()))
+                          .map((m) => CheckboxListTile(
+                                secondary:
+                                    const Icon(Icons.person, color: Colors.grey),
+                                title: Text(m),
+                                subtitle: const Text('Manual'),
+                                value: true,
+                                onChanged: (val) {
+                                  setState(() {
+                                    _manualPersonnel.remove(m);
+                                  });
+                                  setModalState(() {});
+                                },
+                              )),
+                      const Divider(),
+                      ...filtered.map((e) {
+                        final isSelected = _selectedPersonal.any(
+                          (p) => p.id == e.id,
+                        );
+                        return CheckboxListTile(
+                          title: Text(e.nombreCompleto),
+                          subtitle: Text(e.departamento ?? ''),
+                          value: isSelected,
+                          onChanged: (val) {
+                            setState(() {
+                              if (val == true) {
+                                _selectedPersonal.add(e);
+                              } else {
+                                _selectedPersonal.removeWhere(
+                                  (p) => p.id == e.id,
+                                );
+                              }
+                            });
+                            setModalState(() {});
+                          },
+                        );
+                      }),
+                    ],
                   ),
                 ),
                 Padding(
@@ -477,6 +518,9 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
             _selectedPersonal = _empleados
                 .where((e) => names.contains(e.nombreCompleto))
                 .toList();
+
+            final employeeNames = _selectedPersonal.map((e) => e.nombreCompleto).toSet();
+            _manualPersonnel = names.where((n) => !employeeNames.contains(n)).toList();
           }
         } else {
           // Nueva liquidación: Auto-seleccionar usuario actual
@@ -562,11 +606,11 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
         tarjetaUlt4: _tarjetaController.text.isEmpty
             ? null
             : _tarjetaController.text,
-        proyectoId: _selectedProyectoId!,
+        proyectoId: _selectedProyectoId,
         tipo: _selectedTipo,
-        personalIncluido: _selectedPersonal.isEmpty
+        personalIncluido: (_selectedPersonal.map((e) => e.nombreCompleto).toList() + _manualPersonnel).isEmpty
             ? null
-            : _selectedPersonal.map((e) => e.nombreCompleto).join(', '),
+            : (_selectedPersonal.map((e) => e.nombreCompleto).toList() + _manualPersonnel).join(', '),
         estado: 'pendiente',
         total: _calculateTotal(),
         createdAt: DateTime.now(),
@@ -699,16 +743,14 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                             onTap: _showProyectoSearch,
                             child: FormField<int>(
                               initialValue: _selectedProyectoId,
-                              validator: (val) => _selectedProyectoId == null
-                                  ? 'Seleccione un proyecto'
-                                  : null,
+                              validator: (val) => null,
                               builder: (state) {
                                 return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     InputDecorator(
                                       decoration: InputDecoration(
-                                        labelText: 'Proyecto *',
+                                        labelText: 'Proyecto',
                                         border: const OutlineInputBorder(),
                                         errorText: state.errorText,
                                         suffixIcon: const Icon(
@@ -804,11 +846,14 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                                 suffixIcon: Icon(Icons.arrow_drop_down),
                               ),
                               child: Text(
-                                _selectedPersonal.isEmpty
+                                (_selectedPersonal.isEmpty &&
+                                        _manualPersonnel.isEmpty)
                                     ? 'Toque para seleccionar personal...'
-                                    : _selectedPersonal
-                                          .map((e) => e.nombreCompleto)
-                                          .join(', '),
+                                    : (_selectedPersonal
+                                                .map((e) => e.nombreCompleto)
+                                                .toList() +
+                                            _manualPersonnel)
+                                        .join(', '),
                                 style: TextStyle(
                                   color: _selectedPersonal.isEmpty
                                       ? Colors.grey[600]

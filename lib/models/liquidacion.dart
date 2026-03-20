@@ -5,7 +5,7 @@ class Liquidacion {
   final String? empleadoApellido;
   final DateTime fecha;
   final String? tarjetaUlt4;
-  final int proyectoId;
+  final int? proyectoId;
   final String? proyectoNombre;
   final String tipo;
   final String? personalIncluido;
@@ -22,7 +22,7 @@ class Liquidacion {
     this.empleadoApellido,
     required this.fecha,
     this.tarjetaUlt4,
-    required this.proyectoId,
+    this.proyectoId,
     this.proyectoNombre,
     required this.tipo,
     this.personalIncluido,
@@ -46,8 +46,8 @@ class Liquidacion {
       proyectoId: json['proyecto_id'] != null
           ? (json['proyecto_id'] is int
                 ? json['proyecto_id']
-                : int.tryParse(json['proyecto_id'].toString()) ?? 0)
-          : 0,
+                : int.tryParse(json['proyecto_id'].toString()))
+          : null,
       proyectoNombre: json['proyecto']?['nombre'],
       tipo: json['tipo'] ?? 'VIATICOS',
       personalIncluido: json['personal_incluido'],

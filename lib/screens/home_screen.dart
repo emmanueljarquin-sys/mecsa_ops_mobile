@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/app_provider.dart';
 import '../widgets/bottom_nav.dart';
 import 'flotilla_screen.dart';
@@ -16,7 +17,69 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // ... (resto sin cambios)
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkUpdate();
+    });
+  }
+
+  void _checkUpdate() {
+    final provider = Provider.of<AppProvider>(context, listen: false);
+    if (provider.updateUrl != null) {
+      _showUpdateDialog(provider);
+    }
+  }
+
+  void _showUpdateDialog(AppProvider provider) {
+    showDialog(
+      context: context,
+      barrierDismissible: !provider.forceUpdate,
+      builder: (context) => WillPopScope(
+        onWillPop: () async => !provider.forceUpdate,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.system_update, color: Colors.blue),
+              SizedBox(width: 10),
+              Text("Actualización"),
+            ],
+          ),
+          content: Text(
+            provider.notificationMessage ??
+                "Hay una nueva versión de MecsaOPS disponible con mejoras importantes.",
+          ),
+          actions: [
+            if (!provider.forceUpdate)
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("DESPUÉS"),
+              ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () async {
+                final urlString = provider.updateUrl ?? "https://grupomecsa.net/ops/";
+                final url = Uri.parse(urlString);
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              },
+              child: const Text("ACTUALIZAR AHORA"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<AppProvider>(context);

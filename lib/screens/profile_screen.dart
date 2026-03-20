@@ -94,6 +94,11 @@ class ProfileScreen extends StatelessWidget {
         title: const Text('Mi Perfil'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Editar Perfil',
+            onPressed: () => _showEditProfileDialog(context, provider),
+          ),
+          IconButton(
             icon: const Icon(Icons.logout, color: Colors.red),
             onPressed: () => provider.signOut(),
           ),
@@ -246,6 +251,119 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditProfileDialog(BuildContext context, AppProvider provider) {
+    final emp = provider.currentEmployeeData;
+    final nombreController = TextEditingController(text: emp?['nombre'] ?? '');
+    final apellidoController = TextEditingController(text: emp?['apellido'] ?? '');
+    final telefonoController = TextEditingController(text: emp?['telefono'] ?? '');
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text("Editar Perfil"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nombreController,
+                  decoration: const InputDecoration(
+                    labelText: "Nombre",
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                  enabled: !isSaving,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: apellidoController,
+                  decoration: const InputDecoration(
+                    labelText: "Apellido",
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                  enabled: !isSaving,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: telefonoController,
+                  decoration: const InputDecoration(
+                    labelText: "Teléfono",
+                    prefixIcon: Icon(Icons.phone_outlined),
+                  ),
+                  keyboardType: TextInputType.phone,
+                  enabled: !isSaving,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(context),
+              child: const Text("CANCELAR"),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[900], // Matches profile items color
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final nombre = nombreController.text.trim();
+                      final apellido = apellidoController.text.trim();
+                      final telefono = telefonoController.text.trim();
+
+                      if (nombre.isEmpty || apellido.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Nombre y apellido son obligatorios")),
+                        );
+                        return;
+                      }
+
+                      setDialogState(() => isSaving = true);
+
+                      final success = await provider.updateProfile(
+                        nombre: nombre,
+                        apellido: apellido,
+                        telefono: telefono,
+                      );
+
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              success
+                                  ? "Perfil actualizado exitosamente"
+                                  : provider.errorMessage ?? "Error al actualizar perfil",
+                            ),
+                            backgroundColor: success ? Colors.green : Colors.red,
+                          ),
+                        );
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text("GUARDAR CAMBIOS"),
             ),
           ],
         ),

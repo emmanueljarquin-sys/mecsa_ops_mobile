@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
@@ -6,6 +8,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class AppProvider extends ChangeNotifier {
   int _currentIndex = 0;
@@ -43,6 +46,12 @@ class AppProvider extends ChangeNotifier {
   String? _selectedGpsVoiceName;
   List<Map<String, String>> _availableVoices = [];
   final FlutterTts _tts = FlutterTts();
+  
+  // App Update State
+  String? _updateUrl;
+  bool _forceUpdate = false;
+  String? get updateUrl => _updateUrl;
+  bool get forceUpdate => _forceUpdate;
 
   bool get isGpsMuted => _isGpsMuted;
   String? get selectedGpsVoiceName => _selectedGpsVoiceName;
@@ -102,7 +111,37 @@ class AppProvider extends ChangeNotifier {
     });
     _initNotifications();
     _loadGpsPreferences();
+    _checkAppVersion(); // Check for updates
     fetchData(); // Initial attempt
+  }
+
+  Future<void> _checkAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentBuildNumber = int.tryParse(packageInfo.buildNumber) ?? 0;
+
+      final response = await http.get(
+        Uri.parse('https://grupomecsa.net/ops/api/check_version.php'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          final config = data['data'];
+          final minBuildNumber = config['min_version_code'] as int;
+
+          if (currentBuildNumber < minBuildNumber) {
+            _notificationMessage =
+                config['message'] ?? "Hay una nueva versión disponible.";
+            _updateUrl = config['update_url'];
+            _forceUpdate = config['force_update'] ?? false;
+            notifyListeners();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Error checking app version: $e");
+    }
   }
 
   Future<void> _loadGpsPreferences() async {
@@ -221,6 +260,33 @@ class AppProvider extends ChangeNotifier {
       errorMessage = e.toString().contains("pendiente de activación")
           ? e.toString()
           : "Error al iniciar sesión: ${e.toString()}";
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> requestPasswordReset(String email) async {
+    try {
+      isLoading = true;
+      errorMessage = null;
+      notifyListeners();
+
+      final response = await http.post(
+        Uri.parse('https://grupomecsa.net/ops/api/request_password_reset.php'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'email': email}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint("Reset password error: $e");
+      errorMessage = "Error al solicitar recuperación: ${e.toString()}";
       return false;
     } finally {
       isLoading = false;
@@ -1017,6 +1083,42 @@ class AppProvider extends ChangeNotifier {
       debugPrint("❌ Error updating profile photo: $e");
       errorMessage = "Error al actualizar foto: $e";
       notifyListeners();
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> updateProfile({
+    required String nombre,
+    required String apellido,
+    required String telefono,
+  }) async {
+    try {
+      if (currentEmployeeId == null) return false;
+
+      isLoading = true;
+      notifyListeners();
+
+      await _supabase.from('Empleados').update({
+        'nombre': nombre,
+        'apellido': apellido,
+        'telefono': telefono,
+      }).eq('id', currentEmployeeId!);
+
+      // Actualizar localmente
+      if (currentEmployeeData != null) {
+        currentEmployeeData!['nombre'] = nombre;
+        currentEmployeeData!['apellido'] = apellido;
+        currentEmployeeData!['telefono'] = telefono;
+      }
+
+      _notificationMessage = "Perfil actualizado correctamente";
+      return true;
+    } catch (e) {
+      debugPrint("❌ Error updating profile: $e");
+      errorMessage = "Error al actualizar perfil: $e";
+      return false;
     } finally {
       isLoading = false;
       notifyListeners();

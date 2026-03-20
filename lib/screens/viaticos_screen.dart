@@ -15,7 +15,7 @@ class ViaticosScreen extends StatefulWidget {
 
 class _ViaticosScreenState extends State<ViaticosScreen> {
   List<Liquidacion> liquidaciones = [];
-  bool isLoading = true;
+  bool isLoading = false;
   String? error;
   String selectedFilter = 'todos';
   int currentPage = 1;
@@ -31,12 +31,16 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final provider = Provider.of<AppProvider>(context);
-    if (provider.currentEmployeeId != null && liquidaciones.isEmpty && !isLoading && error == null) {
+    // Disparar carga si tenemos el ID y no hay datos/errores previos
+    if (provider.currentEmployeeId != null && liquidaciones.isEmpty && error == null) {
+      // Solo si no estamos ya en proceso de carga real (no el de espera)
       _loadLiquidaciones();
     }
   }
 
   Future<void> _loadLiquidaciones({bool refresh = false}) async {
+    if (isLoading && !refresh) return;
+
     if (refresh) {
       setState(() {
         currentPage = 1;
@@ -56,8 +60,7 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
       // Esperar si el provider está cargando datos iniciales
       if (provider.isLoading && provider.currentEmployeeId == null) {
         setState(() => isLoading = true);
-        // Podríamos esperar un poco o simplemente dejar que el RefreshIndicator lo maneje
-        // pero lo ideal es no proceder si no hay ID aún.
+        return;
       }
 
       final empleadoId = provider.currentEmployeeId;
