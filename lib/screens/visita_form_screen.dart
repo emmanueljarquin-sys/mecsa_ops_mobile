@@ -110,6 +110,20 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
     }
   }
 
+  Future<void> _openMapPicker() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MapPickerScreen()),
+    );
+    if (result != null && result is Map) {
+      setState(() {
+        _lat = result['lat'];
+        _lng = result['lng'];
+        _direccionController.text = result['address'];
+      });
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -289,6 +303,12 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
                 controller: _direccionController,
                 decoration: _inputDecoration(
                   "Dirección de la parada principal",
+                ).copyWith(
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.map_outlined, color: Colors.blue),
+                    onPressed: _openMapPicker,
+                    tooltip: "Seleccionar en Google Maps",
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -644,21 +664,7 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
                   icon: const Icon(Icons.refresh, size: 20),
                 ),
                 IconButton(
-                  onPressed: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const MapPickerScreen(),
-                      ),
-                    );
-                    if (result != null && result is Map) {
-                      setState(() {
-                        _lat = result['lat'];
-                        _lng = result['lng'];
-                        _direccionController.text = result['address'];
-                      });
-                    }
-                  },
+                  onPressed: _openMapPicker,
                   tooltip: "Seleccionar en mapa",
                   icon: const Icon(
                     Icons.map_outlined,

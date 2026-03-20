@@ -452,20 +452,65 @@ class _FacturaItem extends StatelessWidget {
               ),
             ],
           ),
-          if (factura.documento != null)
+          if (factura.documento != null && factura.documento!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 12.0),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => _viewDocument(factura.documento!),
-                  icon: const Icon(Icons.description, size: 18),
-                  label: const Text('Ver Comprobante'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.green,
-                    side: const BorderSide(color: Colors.green),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.green.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.attach_file,
+                            size: 16,
+                            color: Colors.green,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Comprobante adjunto',
+                            style: TextStyle(
+                              color: Colors.green,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () => _viewDocument(factura.documento!),
+                            icon: const Icon(Icons.visibility, size: 18),
+                            label: const Text(
+                              'VER',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            style: TextButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 0,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
         ],
@@ -475,9 +520,7 @@ class _FacturaItem extends StatelessWidget {
 
   Future<void> _viewDocument(String path) async {
     final url = Uri.parse(
-      Supabase.instance.client.storage
-          .from('facturas_viaticos')
-          .getPublicUrl(path),
+      'https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/facturas_viaticos/$path',
     );
     try {
       if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
