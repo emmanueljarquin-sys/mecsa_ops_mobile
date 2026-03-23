@@ -286,7 +286,9 @@ class LiquidacionesService {
 
   // Subir documento
   static Future<String> uploadDocumento(String filePath) async {
-    final uri = Uri.parse('$baseUrl/upload_factura_documento.php');
+    // URL base siempre con HTTPS para evitar redirecciones 301
+    const uploadUrl = 'https://grupomecsa.net/ops/api/upload_factura_documento.php';
+    final uri = Uri.parse(uploadUrl);
 
     try {
       var request = http.MultipartRequest('POST', uri);
@@ -294,7 +296,30 @@ class LiquidacionesService {
         await http.MultipartFile.fromPath('documento', filePath),
       );
 
+      // Enviar sin seguir redirecciones para atrapar el 301
       final streamedResponse = await request.send();
+      
+      // Si hay una redirección, seguirla manualmente con la nueva URL
+      if (streamedResponse.statusCode == 301 || streamedResponse.statusCode == 302) {
+        final location = streamedResponse.headers['location'];
+        if (location != null) {
+          print('DEBUG: Redirigiendo subida a: $location');
+          final redirectUri = Uri.parse(location);
+          var redirectRequest = http.MultipartRequest('POST', redirectUri);
+          redirectRequest.files.add(
+            await http.MultipartFile.fromPath('documento', filePath),
+          );
+          final redirectedResponse = await redirectRequest.send();
+          final response = await http.Response.fromStream(redirectedResponse);
+          if (response.statusCode == 200) {
+            final data = json.decode(response.body);
+            if (data['success']) return data['path'];
+            throw Exception(data['error'] ?? 'Error al subir archivo');
+          }
+          throw Exception('Error de conexión tras redirección: ${response.statusCode}');
+        }
+      }
+
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
