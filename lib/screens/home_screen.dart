@@ -262,7 +262,12 @@ class DashboardTab extends StatelessWidget {
                   radius: 18,
                   backgroundColor: Colors.grey[200],
                   backgroundImage: emp?['photo'] != null
-                      ? NetworkImage(emp!['photo'])
+                      ? NetworkImage(() {
+                          final raw = emp!['photo'];
+                          if (raw is String) return raw;
+                          if (raw is Map) return (raw['url'] ?? raw['path'] ?? '').toString();
+                          return '';
+                        }())
                       : const NetworkImage('https://i.pravatar.cc/150?img=11'),
                 ),
               ),
@@ -373,26 +378,36 @@ class DashboardTab extends StatelessWidget {
                       width: 70,
                       height: 70,
                       color: Colors.grey[300],
-                      child:
-                          nextReservation['vehiculos'] != null &&
+                      child: nextReservation['vehiculos'] != null &&
                               nextReservation['vehiculos']['foto'] != null
-                          ? Image.network(
-                              nextReservation['vehiculos']['foto']
-                                      .toString()
-                                      .startsWith('http')
-                                  ? nextReservation['vehiculos']['foto']
+                          ? Builder(builder: (ctx) {
+                              // foto puede ser String o Map<String, dynamic>
+                              final dynamic rawFoto =
+                                  nextReservation!['vehiculos']['foto'];
+                              String fotoUrl = '';
+                              if (rawFoto is String) {
+                                fotoUrl = rawFoto;
+                              } else if (rawFoto is Map) {
+                                fotoUrl = (rawFoto['url'] ?? rawFoto['path'] ?? '').toString();
+                              }
+                              if (fotoUrl.isEmpty) {
+                                return const Icon(Icons.directions_car, size: 40, color: Colors.grey);
+                              }
+                              final String finalUrl = fotoUrl.startsWith('http')
+                                  ? fotoUrl
                                   : Supabase.instance.client.storage
-                                        .from('flotilla')
-                                        .getPublicUrl(
-                                          nextReservation['vehiculos']['foto'],
-                                        ),
-                              fit: BoxFit.cover,
-                              errorBuilder: (ctx, _, __) => const Icon(
-                                Icons.directions_car,
-                                size: 40,
-                                color: Colors.grey,
-                              ),
-                            )
+                                      .from('flotilla')
+                                      .getPublicUrl(fotoUrl);
+                              return Image.network(
+                                finalUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (ctx, _, __) => const Icon(
+                                  Icons.directions_car,
+                                  size: 40,
+                                  color: Colors.grey,
+                                ),
+                              );
+                            })
                           : const Icon(
                               Icons.directions_car,
                               size: 40,
@@ -481,7 +496,12 @@ class DashboardTab extends StatelessWidget {
                   radius: 30,
                   backgroundColor: Colors.grey[200],
                   backgroundImage: emp?['photo'] != null
-                      ? NetworkImage(emp!['photo'])
+                      ? NetworkImage(() {
+                          final raw = emp!['photo'];
+                          if (raw is String) return raw;
+                          if (raw is Map) return (raw['url'] ?? raw['path'] ?? '').toString();
+                          return '';
+                        }())
                       : const NetworkImage('https://i.pravatar.cc/150?img=11'),
                 ),
                 const SizedBox(width: 16),

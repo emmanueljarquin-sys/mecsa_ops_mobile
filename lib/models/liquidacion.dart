@@ -48,7 +48,7 @@ class Liquidacion {
                 ? json['proyecto_id']
                 : int.tryParse(json['proyecto_id'].toString()))
           : null,
-      proyectoNombre: json['proyecto']?['nombre'],
+      proyectoNombre: json['proyecto']?['nombre'] ?? (json['proyecto_id']?.toString() ?? 'Sin Proyecto'),
       tipo: json['tipo'] ?? 'VIATICOS',
       personalIncluido: json['personal_incluido'],
       estado: json['estado'] ?? 'pendiente',
@@ -82,10 +82,12 @@ class Liquidacion {
     };
   }
 
-  String get empleadoCompleto =>
-      empleadoNombre != null && empleadoApellido != null
-      ? '$empleadoNombre $empleadoApellido'
-      : 'N/A';
+  String get empleadoCompleto {
+    if (empleadoNombre != null && empleadoApellido != null) {
+      return '$empleadoNombre $empleadoApellido';
+    }
+    return 'ID: $empleadoId';
+  }
 
   double get totalGeneral => totales?['TOTAL'] ?? (total ?? 0.0);
 
@@ -178,14 +180,12 @@ class Empleado {
   final String id;
   final String nombre;
   final String apellido;
-  final String? cedula;
   final String? departamento;
 
   Empleado({
     required this.id,
     required this.nombre,
     required this.apellido,
-    this.cedula,
     this.departamento,
   });
 
@@ -194,7 +194,6 @@ class Empleado {
       id: json['id'].toString(),
       nombre: json['nombre'],
       apellido: json['apellido'],
-      cedula: json['cedula'],
       departamento: json['departamento'],
     );
   }

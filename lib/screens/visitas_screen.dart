@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
-import 'visita_form_screen.dart';
+import 'visita_inicio_screen.dart';
 import 'visita_detail_screen.dart';
 import 'trip_nav_screen.dart';
 
@@ -165,14 +165,19 @@ class _VisitasScreenState extends State<VisitasScreen> {
             )
           else
             ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
+              onPressed: () async {
+                await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const VisitaFormScreen()),
+                  MaterialPageRoute(
+                      builder: (_) => const VisitaInicioScreen()),
                 );
+                // Refrescar lista al volver
+                if (context.mounted) {
+                  context.read<AppProvider>().refreshVisitas();
+                }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E293B),
+                backgroundColor: const Color(0xFF16A34A),
                 foregroundColor: Colors.white,
                 elevation: 0,
                 padding: const EdgeInsets.symmetric(
@@ -183,9 +188,9 @@ class _VisitasScreenState extends State<VisitasScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              icon: const Icon(Icons.add_rounded, size: 20),
+              icon: const Icon(Icons.play_arrow_rounded, size: 20),
               label: const Text(
-                "Nueva",
+                "Iniciar Visita",
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),

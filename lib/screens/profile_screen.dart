@@ -85,8 +85,15 @@ class ProfileScreen extends StatelessWidget {
       fullName = user!.email!.split('@')[0];
     }
 
-    // Avatar
-    final String? photoUrl = emp?['photo'];
+    // Avatar — photo puede ser String o Map JSONB
+    final dynamic rawPhoto = emp?['photo'];
+    String? photoUrl;
+    if (rawPhoto is String && rawPhoto.isNotEmpty) {
+      photoUrl = rawPhoto;
+    } else if (rawPhoto is Map) {
+      final u = rawPhoto['url'] ?? rawPhoto['path'] ?? '';
+      if (u.toString().isNotEmpty) photoUrl = u.toString();
+    }
     final bool hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
 
     return Scaffold(

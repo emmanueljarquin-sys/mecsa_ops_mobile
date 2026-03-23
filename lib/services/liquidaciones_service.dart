@@ -1,5 +1,7 @@
-import 'dart:convert';
+import 'dart:io';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../models/liquidacion.dart';
 
 class LiquidacionesService {
@@ -17,94 +19,188 @@ class LiquidacionesService {
     int page = 1,
     int limit = 20,
   }) async {
-    final queryParams = <String, String>{
-      'page': page.toString(),
-      'limit': limit.toString(),
-    };
-
-    if (empleadoId != null) queryParams['empleado_id'] = empleadoId;
-    if (proyectoId != null) queryParams['proyecto_id'] = proyectoId.toString();
-    if (estado != null) queryParams['estado'] = estado;
-    if (fechaDesde != null) {
-      queryParams['fecha_desde'] = fechaDesde.toIso8601String().split('T')[0];
-    }
-    if (fechaHasta != null) {
-      queryParams['fecha_hasta'] = fechaHasta.toIso8601String().split('T')[0];
-    }
-
-    final uri = Uri.parse(
-      '$baseUrl/get_liquidaciones.php',
-    ).replace(queryParameters: queryParams);
-
-    print('DEBUG: Cargando liquidaciones desde $uri');
-
     try {
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-      print('DEBUG: Respuesta recibida: ${response.statusCode}');
+      final supabase = Supabase.instance.client;
+      final offset = (page - 1) * limit;
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success']) {
-          print(
-            'DEBUG: Datos obtenidos con éxito. Cantidad: ${(data['data'] as List).length}',
-          );
-          return {
-            'liquidaciones': (data['data'] as List)
-                .map((l) => Liquidacion.fromJson(l))
-                .toList(),
-            'pagination': data['pagination'],
-          };
-        } else {
-          print('DEBUG: Error en la respuesta del API: ${data['error']}');
-          throw Exception(data['error'] ?? 'Error desconocido');
-        }
-      } else {
-        print('DEBUG: Error de servidor o conexión: ${response.statusCode}');
-        throw Exception('Error de conexión: ${response.statusCode}');
+      var query = supabase
+          .schema('viaticos')
+          .from('liquidaciones')
+          .select('*');
+
+      // Filtros
+      if (empleadoId != null && empleadoId != 'null' && empleadoId.isNotEmpty) {
+        query = query.eq('empleado_id', empleadoId);
       }
+      if (proyectoId != null) {
+        query = query.eq('proyecto_id', proyectoId);
+      }
+      if (estado != null) {
+        query = query.eq('estado', estado);
+      }
+      if (fechaDesde != null) {
+        query = query.gte('fecha', fechaDesde.toIso8601String().split('T')[0]);
+      }
+      if (fechaHasta != null) {
+        query = query.lte('fecha', fechaHasta.toIso8601String().split('T')[0]);
+      }
+
+      final res = await query
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1)
+          .count(CountOption.exact);
+
+      final List<dynamic> data = res.data;
+      final int count = res.count;
+
+      if (data.isEmpty) {
+        return {
+          'liquidaciones': <Liquidacion>[],
+          'pagination': { 'page': page, 'limit': limit, 'total': count },
+        };
+      }
+
+      // 1. Recolectar IDs únicos con casteo explícito
+      final empIds = data.map((l) => l['empleado_id']?.toString()).where((id) => id != null && id.isNotEmpty).toSet().toList();
+      final proyIds = data.map((l) => l['proyecto_id']).where((id) => id != null).toSet().toList();
+
+      // 2. Fetch en bloque de Empleados
+      final Map<String, dynamic> empMap = {};
+      if (empIds.isNotEmpty) {
+        try {
+          final empsRes = await supabase
+              .from('Empleados')
+              .select('id, nombre, apellido')
+              .inFilter('id', empIds);
+          for (var e in empsRes) {
+            empMap[e['id'].toString()] = e;
+          }
+        } catch (e) {
+          print('DEBUG: RLS o Error en batch Empleados: $e');
+        }
+      }
+
+      // 3. Fetch en bloque de Proyectos
+      final Map<String, String> proyMap = {};
+      if (proyIds.isNotEmpty) {
+        try {
+          final proysRes = await supabase
+              .schema('proyectos')
+              .from('projects')
+              .select('project_id, title')
+              .inFilter('project_id', proyIds);
+          for (var p in proysRes) {
+            proyMap[p['project_id'].toString()] = p['title'] ?? 'Sin título';
+          }
+        } catch (e) {
+          print('DEBUG: RLS o Error en batch Proyectos: $e');
+        }
+      }
+
+      // 4. Mapear resultados
+      final List<Liquidacion> liquidaciones = data.map((item) {
+        final Map<String, dynamic> itemMap = Map<String, dynamic>.from(item);
+        final String? eid = itemMap['empleado_id']?.toString();
+        final String? pid = itemMap['proyecto_id']?.toString();
+
+        if (eid != null && empMap.containsKey(eid)) {
+          itemMap['empleado'] = empMap[eid];
+        }
+        if (pid != null && proyMap.containsKey(pid)) {
+          itemMap['proyecto'] = {'nombre': proyMap[pid]};
+        }
+
+        return Liquidacion.fromJson(itemMap);
+      }).toList();
+
+      return {
+        'liquidaciones': liquidaciones,
+        'pagination': {
+          'page': page,
+          'limit': limit,
+          'total': count,
+        },
+      };
     } catch (e) {
-      print('DEBUG: Excepción capturada en getLiquidaciones: $e');
+      print('DEBUG: ERROR en getLiquidaciones vía Supabase: $e');
       rethrow;
     }
   }
 
   // Obtener detalle de una liquidación
   static Future<Liquidacion> getLiquidacionDetail(String id) async {
-    final uri = Uri.parse('$baseUrl/get_liquidacion_detail.php?id=$id');
+    try {
+      final supabase = Supabase.instance.client;
+      
+      // Obtener liquidación base
+      final res = await supabase
+          .schema('viaticos')
+          .from('liquidaciones')
+          .select('*')
+          .eq('id', id)
+          .single();
+      
+      // Obtener facturas relacionadas
+      final facturasRes = await supabase
+          .schema('viaticos')
+          .from('facturas')
+          .select('*')
+          .eq('liquidacion_id', id);
+      
+      final Map<String, dynamic> data = Map<String, dynamic>.from(res);
+      data['facturas'] = facturasRes;
+      
+      // Hidratar con datos de empleado (public)
+      final empRes = await supabase
+          .from('Empleados')
+          .select('nombre, apellido')
+          .eq('id', data['empleado_id'])
+          .maybeSingle();
+      if (empRes != null) data['empleado'] = empRes;
 
-    final response = await http.get(uri);
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data['success']) {
-        return Liquidacion.fromJson(data['data']);
-      } else {
-        throw Exception(data['error'] ?? 'Error desconocido');
+      // Hidratar con datos de proyecto (proyectos)
+      if (data['proyecto_id'] != null) {
+        final proyRes = await supabase
+            .schema('proyectos')
+            .from('projects')
+            .select('title')
+            .eq('project_id', data['proyecto_id'])
+            .maybeSingle();
+        if (proyRes != null) {
+          data['proyecto'] = {'nombre': proyRes['title']};
+        }
       }
-    } else {
-      throw Exception('Error de conexión: ${response.statusCode}');
+
+      return Liquidacion.fromJson(data);
+    } catch (e) {
+      print('DEBUG: ERROR en getLiquidacionDetail vía Supabase: $e');
+      rethrow;
     }
   }
 
-  // Crear nueva liquidación
+  // Crear nueva liquidación vía API PHP (para disparar notificaciones)
   static Future<Liquidacion> createLiquidacion(Liquidacion liquidacion) async {
-    final uri = Uri.parse('$baseUrl/create_liquidacion.php');
+    try {
+      final url = Uri.parse('$baseUrl/create_liquidacion.php');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(liquidacion.toJson()),
+      );
 
-    final response = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(liquidacion.toJson()),
-    );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data['success']) {
-        return Liquidacion.fromJson(data['data']);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        if (result['success'] == true) {
+          return Liquidacion.fromJson(result['data']);
+        } else {
+          throw Exception(result['error'] ?? 'Error desconocido en el servidor');
+        }
       } else {
-        throw Exception(data['error'] ?? 'Error desconocido');
+        throw Exception('Error al conectar con el servidor: ${response.statusCode}');
       }
-    } else {
-      throw Exception('Error de conexión: ${response.statusCode}');
+    } catch (e) {
+      print('DEBUG: ERROR en createLiquidacion vía API PHP: $e');
+      rethrow;
     }
   }
 
@@ -113,90 +209,70 @@ class LiquidacionesService {
     String id,
     Liquidacion liquidacion,
   ) async {
-    final uri = Uri.parse('$baseUrl/update_liquidacion.php');
-
-    final body = liquidacion.toJson();
-    body['id'] = id;
-
-    final response = await http.patch(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(body),
-    );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data['success']) {
-        return Liquidacion.fromJson(data['data']);
-      } else {
-        throw Exception(data['error'] ?? 'Error desconocido');
-      }
-    } else {
-      throw Exception('Error de conexión: ${response.statusCode}');
+    try {
+      final supabase = Supabase.instance.client;
+      final data = liquidacion.toJson();
+      
+      final res = await supabase
+          .schema('viaticos')
+          .from('liquidaciones')
+          .update(data)
+          .eq('id', id)
+          .select()
+          .single();
+          
+      return Liquidacion.fromJson(res);
+    } catch (e) {
+      print('DEBUG: ERROR en updateLiquidacion vía Supabase: $e');
+      rethrow;
     }
   }
 
   // Eliminar liquidación
   static Future<void> deleteLiquidacion(String id) async {
-    final uri = Uri.parse('$baseUrl/delete_liquidacion.php');
-
-    final request = http.Request('DELETE', uri);
-    request.headers['Content-Type'] = 'application/json';
-    request.body = json.encode({'id': id});
-
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (!data['success']) {
-        throw Exception(data['error'] ?? 'Error desconocido');
-      }
-    } else {
-      throw Exception('Error de conexión: ${response.statusCode}');
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase
+          .schema('viaticos')
+          .from('liquidaciones')
+          .delete()
+          .eq('id', id);
+    } catch (e) {
+      print('DEBUG: ERROR en deleteLiquidacion vía Supabase: $e');
+      rethrow;
     }
   }
 
   // Crear factura
   static Future<Factura> createFactura(Factura factura) async {
-    final uri = Uri.parse('$baseUrl/create_factura.php');
-
-    final response = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(factura.toJson()),
-    );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data['success']) {
-        return Factura.fromJson(data['data']);
-      } else {
-        throw Exception(data['error'] ?? 'Error desconocido');
-      }
-    } else {
-      throw Exception('Error de conexión: ${response.statusCode}');
+    try {
+      final supabase = Supabase.instance.client;
+      final res = await supabase
+          .schema('viaticos')
+          .from('facturas')
+          .insert(factura.toJson())
+          .select()
+          .single();
+          
+      return Factura.fromJson(res);
+    } catch (e) {
+      print('DEBUG: ERROR en createFactura vía Supabase: $e');
+      rethrow;
     }
   }
 
   // Eliminar factura
   static Future<void> deleteFactura(String id) async {
-    final uri = Uri.parse('$baseUrl/delete_factura.php');
-
-    final request = http.Request('DELETE', uri);
-    request.headers['Content-Type'] = 'application/json';
-    request.body = json.encode({'id': id});
-
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (!data['success']) {
-        throw Exception(data['error'] ?? 'Error desconocido');
-      }
-    } else {
-      throw Exception('Error de conexión: ${response.statusCode}');
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase
+          .schema('viaticos')
+          .from('facturas')
+          .delete()
+          .eq('id', id);
+    } catch (e) {
+      print('DEBUG: ERROR en deleteFactura vía Supabase: $e');
+      rethrow;
     }
   }
 
@@ -206,134 +282,95 @@ class LiquidacionesService {
     String estado, {
     String? comentario,
   }) async {
-    final uri = Uri.parse('$baseUrl/approve_liquidacion.php');
-
-    final body = {'id': id, 'estado': estado};
-    if (comentario != null && comentario.isNotEmpty) {
-      body['comentario'] = comentario;
-    }
-
-    final response = await http.patch(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(body),
-    );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      if (data['success']) {
-        return Liquidacion.fromJson(data['data']);
-      } else {
-        throw Exception(data['error'] ?? 'Error desconocido');
-      }
-    } else {
-      throw Exception('Error de conexión: ${response.statusCode}');
+    try {
+      final supabase = Supabase.instance.client;
+      final updateData = {'estado': estado};
+      // Aquí se podría guardar el comentario en una tabla de auditoría o columna si existiera
+      
+      final res = await supabase
+          .schema('viaticos')
+          .from('liquidaciones')
+          .update(updateData)
+          .eq('id', id)
+          .select()
+          .single();
+          
+      return Liquidacion.fromJson(res);
+    } catch (e) {
+      print('DEBUG: ERROR en approveLiquidacion vía Supabase: $e');
+      rethrow;
     }
   }
 
   // Obtener empleados
   static Future<List<Empleado>> getEmpleados() async {
-    final uri = Uri.parse('$baseUrl/get_empleados_list.php');
-    print('DEBUG: Cargando empleados desde $uri');
     try {
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-      print('DEBUG: Empleados respuesta: ${response.statusCode}');
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success']) {
-          print('DEBUG: Empleados cargados: ${(data['data'] as List).length}');
-          return (data['data'] as List)
-              .map((e) => Empleado.fromJson(e))
-              .toList();
-        }
-      }
+      final supabase = Supabase.instance.client;
+      final res = await supabase
+          .from('Empleados')
+          .select('id, nombre, apellido')
+          .order('nombre');
+      
+      return (res as List).map((e) => Empleado.fromJson(e)).toList();
     } catch (e) {
-      print('DEBUG: ERROR cargando empleados: $e');
+      print('DEBUG: ERROR cargando empleados en LiquidacionesService: $e');
+      return [];
     }
-    return [];
   }
 
   // Obtener proyectos
   static Future<List<Proyecto>> getProyectos() async {
-    final uri = Uri.parse('$baseUrl/get_proyectos_list.php');
-    print('DEBUG: Cargando proyectos desde $uri');
     try {
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-      print('DEBUG: Proyectos respuesta: ${response.statusCode}');
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success']) {
-          print('DEBUG: Proyectos cargados: ${(data['data'] as List).length}');
-          return (data['data'] as List)
-              .map((p) => Proyecto.fromJson(p))
-              .toList();
-        } else {
-          print('DEBUG: API Error proyectos: ${response.body}');
-          throw Exception(data['error'] ?? 'Error desconocido');
-        }
-      } else {
-        print(
-          'DEBUG: Server Error proyectos (${response.statusCode}): ${response.body}',
+      final supabase = Supabase.instance.client;
+      final res = await supabase
+          .schema('proyectos')
+          .from('projects')
+          .select('project_id, title')
+          .order('title');
+      
+      return (res as List).map((p) {
+        // Mapear 'project_id' a 'id' y 'title' a 'nombre' para el modelo Proyecto
+        return Proyecto(
+          id: p['project_id'],
+          nombre: p['title'] ?? 'Sin nombre',
         );
-        throw Exception('Error de conexión: ${response.statusCode}');
-      }
+      }).toList();
     } catch (e) {
-      print('DEBUG: ERROR crítico cargando proyectos: $e');
-      rethrow;
+      print('DEBUG: ERROR cargando proyectos vía Supabase: $e');
+      return [];
     }
-    return [];
   }
 
   // Subir documento
   static Future<String> uploadDocumento(String filePath) async {
-    // URL base siempre con HTTPS para evitar redirecciones 301
-    const uploadUrl = 'https://grupomecsa.net/ops/api/upload_factura_documento.php';
-    final uri = Uri.parse(uploadUrl);
-
     try {
-      var request = http.MultipartRequest('POST', uri);
-      request.files.add(
-        await http.MultipartFile.fromPath('documento', filePath),
-      );
-
-      // Enviar sin seguir redirecciones para atrapar el 301
-      final streamedResponse = await request.send();
+      final supabase = Supabase.instance.client;
+      final session = supabase.auth.currentSession;
       
-      // Si hay una redirección, seguirla manualmente con la nueva URL
-      if (streamedResponse.statusCode == 301 || streamedResponse.statusCode == 302) {
-        final location = streamedResponse.headers['location'];
-        if (location != null) {
-          print('DEBUG: Redirigiendo subida a: $location');
-          final redirectUri = Uri.parse(location);
-          var redirectRequest = http.MultipartRequest('POST', redirectUri);
-          redirectRequest.files.add(
-            await http.MultipartFile.fromPath('documento', filePath),
-          );
-          final redirectedResponse = await redirectRequest.send();
-          final response = await http.Response.fromStream(redirectedResponse);
-          if (response.statusCode == 200) {
-            final data = json.decode(response.body);
-            if (data['success']) return data['path'];
-            throw Exception(data['error'] ?? 'Error al subir archivo');
-          }
-          throw Exception('Error de conexión tras redirección: ${response.statusCode}');
-        }
+      if (session == null) {
+        throw "No hay una sesión activa. Por favor, vuelve a iniciar sesión.";
       }
 
-      final response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success']) {
-          return data['path'];
-        } else {
-          throw Exception(data['error'] ?? 'Error al subir archivo');
-        }
-      } else {
-        throw Exception('Error de conexión: ${response.statusCode}');
+      final file = File(filePath);
+      if (!await file.exists()) {
+        throw "El archivo no existe en la ruta: $filePath";
       }
+
+      final fileName = "${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}";
+      
+      print('DEBUG: Intento de subida a bucket: facturas_viaticos');
+      print('DEBUG: File: $fileName | User: ${session.user.id}');
+
+      await supabase.storage
+          .from('facturas_viaticos')
+          .upload(fileName, file, fileOptions: const FileOptions(upsert: true));
+          
+      return fileName;
     } catch (e) {
-      print('DEBUG: Error in uploadDocumento: $e');
+      print('DEBUG: Error CRITICO en uploadDocumento: $e');
+      if (e is StorageException) {
+        print('DEBUG: Storage Error Body: ${e.message} | Code: ${e.statusCode}');
+      }
       rethrow;
     }
   }

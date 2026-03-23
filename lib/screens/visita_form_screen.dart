@@ -132,7 +132,13 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
     // Subir fotos primero si hay
     List<String> photoUrls = [];
     if (widget.visita != null && widget.visita!['fotos'] != null) {
-      photoUrls = List<String>.from(widget.visita!['fotos']);
+      // Normalizar: fotos puede ser List<String> o List<Map>
+      final rawFotos = widget.visita!['fotos'] as List;
+      photoUrls = rawFotos.map((f) {
+        if (f is String) return f;
+        if (f is Map) return (f['url'] ?? f['path'] ?? '').toString();
+        return f.toString();
+      }).where((s) => s.isNotEmpty).toList();
     }
 
     if (_fotos.isNotEmpty) {

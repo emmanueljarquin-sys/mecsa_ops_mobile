@@ -366,10 +366,16 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
       ),
       itemCount: photos.length,
       itemBuilder: (context, index) {
+        // Manejar tanto String como Map<String, dynamic>
+        final raw = photos[index];
+        final String url = raw is String
+            ? raw
+            : (raw is Map ? (raw['url'] ?? raw['path'] ?? '').toString() : '');
+        if (url.isEmpty) return const SizedBox.shrink();
         return ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: Image.network(
-            photos[index],
+            url,
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => Container(
               color: Colors.grey[200],

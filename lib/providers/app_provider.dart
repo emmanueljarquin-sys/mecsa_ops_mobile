@@ -63,7 +63,7 @@ class AppProvider extends ChangeNotifier {
       // Fetch completo de datos del empleado
       final res = await _supabase
           .from('Empleados')
-          .select()
+          .select('id, codigo_empleado, nombre, apellido, email, telefono, activo, photo, id_rol, fcm_token, rol, chat_role, sistemas_acceso, departamento')
           .eq('email', user!.email!)
           .maybeSingle();
 
@@ -625,15 +625,158 @@ class AppProvider extends ChangeNotifier {
       final fileName = "visita_${DateTime.now().millisecondsSinceEpoch}.jpg";
       final path = "visitas/$fileName";
 
-      await _supabase.storage.from('visitas_fotos').upload(path, file);
+      await _supabase.storage.from('visitas_fotos').upload(
+        path,
+        file,
+        fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
+      );
 
-      final publicUrl = _supabase.storage
-          .from('visitas_fotos')
-          .getPublicUrl(path);
+      final publicUrl = _supabase.storage.from('visitas_fotos').getPublicUrl(path);
       return publicUrl;
     } catch (e) {
       debugPrint("Error uploading visita photo: $e");
       return null;
+    }
+  }
+
+  // --- NUEVOS MÉTODOS VISITA V2 (SUPABASE SDK) ---
+
+  Future<String?> startVisitaV2({
+    required double lat,
+    required double lng,
+    required String odometroInicial,
+    File? fotoOdometro,
+  }) async {
+    try {
+      if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
+
+      String? fotoUrl;
+      if (fotoOdometro != null) {
+        fotoUrl = await uploadVisitaFoto(fotoOdometro);
+      }
+
+      final now = DateTime.now();
+      final data = {
+        'empleado_id': currentEmployeeId,
+        'estado': 'en_curso',
+        'fecha': now.toIso8601String().split('T')[0],
+        'hora_inicio': now.toIso8601String().split('T')[1].substring(0, 8),
+        'lat': lat,
+        'lng': lng,
+        'odometro_inicial': double.tryParse(odometroInicial) ?? 0,
+        'foto_odometro_inicio': fotoUrl,
+        'cliente': 'En ruta',
+        'tipo_visita': 'ruta',
+        'waypoints': [],
+      };
+
+      final res = await _supabase
+          .schema('visitas')
+          .from('visitas')
+          .insert(data)
+          .select()
+          .single();
+
+      await _fetchRutas();
+      return res['id']?.toString();
+    } catch (e) {
+      debugPrint("Error starting visita V2: $e");
+      errorMessage = "Error al iniciar viaje: $e";
+      return null;
+    }
+  }
+
+  Future<bool> updateVisitaWaypointsV2(
+    String id,
+    List<Map<String, dynamic>> waypoints,
+  ) async {
+    try {
+      await _supabase
+          .schema('visitas')
+          .from('visitas')
+          .update({'waypoints': waypoints})
+          .eq('id', id);
+      return true;
+    } catch (e) {
+      debugPrint("Error updating waypoints V2: $e");
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> finishVisitaV2({
+    required String id,
+    required String odometroFinal,
+    required String observaciones,
+    required List<String> proyectosVisitados,
+    required List<Map<String, dynamic>> waypoints,
+    File? fotoOdometroFin,
+  }) async {
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      String? fotoUrl;
+      if (fotoOdometroFin != null) {
+        fotoUrl = await uploadVisitaFoto(fotoOdometroFin);
+      }
+
+      // Obtener datos iniciales para calcular km y duración
+      final resVisita = await _supabase
+          .schema('visitas')
+          .from('visitas')
+          .select('odometro_inicial, hora_inicio, fecha')
+          .eq('id', id)
+          .single();
+
+      final odoIni =
+          double.tryParse(resVisita['odometro_inicial']?.toString() ?? '0') ??
+          0;
+      final odoFin = double.tryParse(odometroFinal) ?? odoIni;
+      final km = odoFin - odoIni;
+
+      // Cálculo de duración aproximada
+      final now = DateTime.now();
+      final horaIniStr = resVisita['hora_inicio']?.toString() ?? '00:00:00';
+      final fechaStr =
+          resVisita['fecha']?.toString() ?? now.toIso8601String().split('T')[0];
+
+      int durationMin = 0;
+      try {
+        final startDt = DateTime.parse('${fechaStr}T$horaIniStr');
+        durationMin = now.difference(startDt).inMinutes;
+      } catch (_) {}
+
+      final updateData = {
+        'estado': 'completada',
+        'odometro_final': odoFin,
+        'km_recorridos': km > 0 ? km : 0,
+        'hora_fin': now.toIso8601String().split('T')[1].substring(0, 8),
+        'duracion_minutos': durationMin,
+        'observaciones': observaciones,
+        'proyectos_visitados': proyectosVisitados,
+        'waypoints': waypoints,
+        'foto_odometro_fin': fotoUrl,
+      };
+
+      await _supabase
+          .schema('visitas')
+          .from('visitas')
+          .update(updateData)
+          .eq('id', id);
+
+      await _fetchRutas();
+
+      return {
+        'km_recorridos': km > 0 ? km : 0,
+        'duracion_minutos': durationMin,
+      };
+    } catch (e) {
+      debugPrint("Error finishing visita V2: $e");
+      errorMessage = "Error al finalizar viaje: $e";
+      return null;
+    } finally {
+      isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -683,7 +826,7 @@ class AppProvider extends ChangeNotifier {
           .toList()
           .cast<Map<String, dynamic>>();
     } catch (e) {
-      debugPrint("Error loading employees: $e");
+      debugPrint("DEBUG: ERROR cargando empleados en AppProvider: $e");
       employees = [];
     }
   }
@@ -1064,8 +1207,7 @@ class AppProvider extends ChangeNotifier {
       final response = await _supabase
           .from('Empleados')
           .update({'photo': publicUrl})
-          .eq('id', currentEmployeeId!)
-          .select();
+          .eq('id', currentEmployeeId!);
 
       debugPrint("✅ Respuesta de actualización DB: $response");
 
