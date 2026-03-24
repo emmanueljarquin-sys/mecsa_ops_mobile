@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:provider/provider.dart';
 import 'package:flutter_tts/flutter_tts.dart'; // Added flutter_tts import
 import '../providers/app_provider.dart';
+import '../utils/location_helper.dart';
 import 'dart:ui';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'dart:math' as math;
@@ -204,12 +205,9 @@ class _TripNavScreenState extends State<TripNavScreen> {
     try {
       // 1. Verificar servicios y permisos antes de pedir posición
       print("TripNav: [STEP 2] Checking permissions...");
-      LocationPermission permission = await Geolocator.checkPermission();
+      LocationPermission permission = await LocationHelper.requestPermissionWithDisclosure(context);
       if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          throw "Permiso de ubicación denegado.";
-        }
+        throw "Permiso de ubicación denegado.";
       }
 
       print("TripNav: [STEP 3] Getting current position...");

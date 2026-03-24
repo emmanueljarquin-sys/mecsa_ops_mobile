@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../utils/location_helper.dart';
 
 const String kMapsKey = "AIzaSyASZXQg6DuMo2NRbxnhmLssq6lVPaBL8ZU";
 
@@ -70,10 +71,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
   Future<void> _obtenerGPS() async {
     setState(() => _gettingGps = true);
     try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
+      var perm = await LocationHelper.requestPermissionWithDisclosure(context);
       if (perm == LocationPermission.denied ||
           perm == LocationPermission.deniedForever) throw 'GPS denegado';
 

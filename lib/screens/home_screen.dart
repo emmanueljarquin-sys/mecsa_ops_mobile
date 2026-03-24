@@ -17,65 +17,48 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkUpdate();
-    });
-  }
-
-  void _checkUpdate() {
-    final provider = Provider.of<AppProvider>(context, listen: false);
-    if (provider.updateUrl != null) {
-      _showUpdateDialog(provider);
-    }
-  }
+  bool _didShowOptionalUpdate = false;
 
   void _showUpdateDialog(AppProvider provider) {
     showDialog(
       context: context,
-      barrierDismissible: !provider.forceUpdate,
-      builder: (context) => WillPopScope(
-        onWillPop: () async => !provider.forceUpdate,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Row(
-            children: [
-              Icon(Icons.system_update, color: Colors.blue),
-              SizedBox(width: 10),
-              Text("Actualización"),
-            ],
-          ),
-          content: Text(
-            provider.notificationMessage ??
-                "Hay una nueva versión de MecsaOPS disponible con mejoras importantes.",
-          ),
-          actions: [
-            if (!provider.forceUpdate)
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("DESPUÉS"),
-              ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).primaryColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () async {
-                final urlString = provider.updateUrl ?? "https://grupomecsa.net/ops/";
-                final url = Uri.parse(urlString);
-                if (await canLaunchUrl(url)) {
-                  await launchUrl(url, mode: LaunchMode.externalApplication);
-                }
-              },
-              child: const Text("ACTUALIZAR AHORA"),
-            ),
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.system_update, color: Colors.blue),
+            SizedBox(width: 10),
+            Text("Actualización"),
           ],
         ),
+        content: Text(
+          provider.notificationMessage ??
+              "Hay una nueva versión de MecsaOPS disponible con mejoras importantes.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("DESPUÉS"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () async {
+              final urlString = provider.updateUrl ?? "https://grupomecsa.net/ops/";
+              final url = Uri.parse(urlString);
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: const Text("ACTUALIZAR AHORA"),
+          ),
+        ],
       ),
     );
   }
@@ -83,6 +66,65 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<AppProvider>(context);
+
+    // Bloqueo total si la actualización es forzosa
+    if (provider.forceUpdate && provider.updateUrl != null) {
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.system_update_alt, size: 80, color: Colors.blue),
+                const SizedBox(height: 24),
+                const Text(
+                  "Actualización Requerida",
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  provider.notificationMessage ?? "Debes actualizar a la última versión para continuar.",
+                  style: const TextStyle(fontSize: 16, color: Colors.black54),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 40),
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: () async {
+                      final url = Uri.parse(provider.updateUrl!);
+                      if (await canLaunchUrl(url)) {
+                        await launchUrl(url, mode: LaunchMode.externalApplication);
+                      }
+                    },
+                    child: const Text(
+                      "DESCARGAR E INSTALAR",
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Modal opcional si hay una update pero no es forzosa
+    if (provider.updateUrl != null && !provider.forceUpdate && !_didShowOptionalUpdate) {
+      _didShowOptionalUpdate = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showUpdateDialog(provider);
+      });
+    }
 
     // Mapeo de pantallas (Lazy loading básico)
     final List<Widget> screens = [

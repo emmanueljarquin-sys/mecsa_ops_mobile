@@ -30,6 +30,17 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
         .toString()
         .toLowerCase();
 
+    List<dynamic> combinedPhotos = [];
+    if (_visita['fotos'] != null && _visita['fotos'] is List) {
+      combinedPhotos.addAll(_visita['fotos'] as List);
+    }
+    if (_visita['foto_odometro_inicio'] != null && _visita['foto_odometro_inicio'].toString().isNotEmpty) {
+      combinedPhotos.add(_visita['foto_odometro_inicio']);
+    }
+    if (_visita['foto_odometro_fin'] != null && _visita['foto_odometro_fin'].toString().isNotEmpty) {
+      combinedPhotos.add(_visita['foto_odometro_fin']);
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -126,8 +137,7 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                   ),
 
                   const SizedBox(height: 24),
-                  if (_visita['fotos'] != null &&
-                      (_visita['fotos'] as List).isNotEmpty) ...[
+                  if (combinedPhotos.isNotEmpty) ...[
                     const Text(
                       "FOTOS ADJUNTAS",
                       style: TextStyle(
@@ -137,7 +147,7 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _buildPhotoGrid(_visita['fotos'] as List),
+                    _buildPhotoGrid(combinedPhotos),
                   ],
 
                   const SizedBox(height: 40),
@@ -228,12 +238,12 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                   if (estado == 'completada') ...[
                     _buildSection(
                       "KILOMETRAJE",
-                      "Inicial: ${_visita['km_inicial'] ?? 'N/A'} - Final: ${_visita['km_final'] ?? 'N/A'}",
+                      "Inicial: ${_visita['odometro_inicial'] ?? _visita['km_inicial'] ?? 'N/A'} - Final: ${_visita['odometro_final'] ?? _visita['km_final'] ?? 'N/A'}",
                     ),
                     const SizedBox(height: 16),
                     _buildSection(
                       "DURACIÓN",
-                      "${_visita['duracion'] ?? 'N/A'} minutos",
+                      "${_visita['duracion_minutos'] ?? _visita['duracion'] ?? 'N/A'} minutos",
                     ),
                   ],
                 ],

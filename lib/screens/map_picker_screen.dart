@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
+import '../utils/location_helper.dart';
 
 // NOTA: El usuario debe configurar su API Key.
 const String kGoogleMapsApiKey = "AIzaSyASZXQg6DuMo2NRbxnhmLssq6lVPaBL8ZU";
@@ -44,11 +45,8 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
 
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return;
-      }
+      LocationPermission permission = await LocationHelper.requestPermissionWithDisclosure(context);
+      if (permission == LocationPermission.denied) return;
 
       if (permission == LocationPermission.deniedForever) return;
 

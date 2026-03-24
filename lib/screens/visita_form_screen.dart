@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../utils/location_helper.dart';
 import 'map_picker_screen.dart';
 
 class VisitaFormScreen extends StatefulWidget {
@@ -72,11 +73,8 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) throw 'Servicio de ubicación desactivado';
 
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) throw 'Permiso denegado';
-      }
+      LocationPermission permission = await LocationHelper.requestPermissionWithDisclosure(context);
+      if (permission == LocationPermission.denied) throw 'Permiso denegado';
 
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
