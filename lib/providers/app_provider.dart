@@ -962,17 +962,24 @@ class AppProvider extends ChangeNotifier {
       if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
       if (currentEmployeeId == null) throw "No se encontró el ID de empleado";
 
-      // 1. Upload photos first
+      // 1. Upload photos in parallel
       final Map<String, String> photoUrls = {};
+      final List<Future<void>> uploadFutures = [];
+
       for (var entry in localPhotos.entries) {
         if (entry.value != null) {
-          final url = await _uploadRegisterPhoto(
-            entry.value,
-            entry.key,
-            reservaId,
+          uploadFutures.add(
+            _uploadRegisterPhoto(entry.value, entry.key, reservaId).then((url) {
+              if (url != null) {
+                photoUrls["foto_${entry.key}"] = url;
+              }
+            }),
           );
-          if (url != null) photoUrls["foto_${entry.key}"] = url;
         }
+      }
+
+      if (uploadFutures.isNotEmpty) {
+        await Future.wait(uploadFutures);
       }
 
       // 2. Insert record
@@ -998,6 +1005,7 @@ class AppProvider extends ChangeNotifier {
       try {
         final pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
         );
         data['ubicacion'] = "${pos.latitude},${pos.longitude}";
       } catch (e) {

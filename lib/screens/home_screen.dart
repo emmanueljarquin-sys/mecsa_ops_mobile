@@ -184,278 +184,392 @@ class DashboardTab extends StatelessWidget {
       nextReservation = provider.myReservations.first;
     }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 1. Custom Header
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.asset(
-                  'assets/images/logo_mecsa_ops.jpg',
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                "MecsaOPS",
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                  color: Color(0xFF212529),
-                ),
-              ),
-              const Spacer(),
-              Stack(
-                children: [
-                  const Icon(
-                    Icons.notifications_outlined,
-                    size: 28,
-                    color: Colors.grey,
+    return RefreshIndicator(
+      onRefresh: () => provider.fetchData(),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. Custom Header
+            Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.asset(
+                    'assets/images/logo_mecsa_ops.jpg',
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.cover,
                   ),
-                  if (pendientes > 0)
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  "MecsaOPS",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    color: Color(0xFF212529),
+                  ),
+                ),
+                const Spacer(),
+                Stack(
+                  children: [
+                    const Icon(
+                      Icons.notifications_outlined,
+                      size: 28,
+                      color: Colors.grey,
+                    ),
+                    if (pendientes > 0)
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 16),
-              PopupMenuButton<String>(
-                offset: const Offset(0, 50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
+                  ],
                 ),
-                onSelected: (value) {
-                  if (value == 'logout') {
-                    provider.signOut();
-                  }
-                },
-                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                  PopupMenuItem<String>(
-                    value: 'profile',
-                    enabled: false,
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 16,
-                          backgroundColor: Colors.grey[200],
-                          child: const Icon(
-                            Icons.person,
-                            size: 20,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              provider.user?.email ?? 'Usuario',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const Text(
-                              "Empleado",
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                const SizedBox(width: 16),
+                PopupMenuButton<String>(
+                  offset: const Offset(0, 50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
                   ),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem<String>(
-                    value: 'logout',
-                    child: Row(
-                      children: [
-                        Icon(Icons.logout, color: Colors.red),
-                        SizedBox(width: 8),
-                        Text(
-                          "Cerrar Sesión",
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                child: CircleAvatar(
-                  radius: 18,
-                  backgroundColor: Colors.grey[200],
-                  backgroundImage: emp?['photo'] != null
-                      ? NetworkImage(() {
-                          final raw = emp!['photo'];
-                          if (raw is String) return raw;
-                          if (raw is Map) return (raw['url'] ?? raw['path'] ?? '').toString();
-                          return '';
-                        }())
-                      : const NetworkImage('https://i.pravatar.cc/150?img=11'),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 24),
-
-          // 2. Greeting
-          Text(
-            "Hola, $fullName",
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF212529),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            "Aquí tienes tu resumen de operaciones.",
-            style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-          ),
-
-          const SizedBox(height: 24),
-
-          // 3. Main Action Buttons
-          Row(
-            children: [
-              Expanded(
-                child: _MainActionButton(
-                  icon: Icons.location_on,
-                  label: "Registrar Visita",
-                  color: Theme.of(context).primaryColor,
-                  textColor: Colors.white,
-                  onTap: () {
-                    // Nav to Visitas or Form
-                    provider.setIndex(3); // Navigate to Visitas Tab
+                  onSelected: (value) {
+                    if (value == 'logout') {
+                      provider.signOut();
+                    }
                   },
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _MainActionButton(
-                  icon: Icons.camera_alt_outlined,
-                  label: "Subir Factura",
-                  color: Colors.white,
-                  textColor: const Color(0xFF212529),
-                  borderColor: Colors.grey[200],
-                  onTap: () {
-                    // Nav to Viaticos
-                    provider.setIndex(2);
-                  },
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 24),
-
-          // 4. Mis Viáticos Card
-          _DashboardCard(
-            title: "Mis Viáticos",
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "₡${totalViaticos.toStringAsFixed(2)}",
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    _StatusBadge(
-                      text: "$pendientes pendientes",
-                      color: const Color(0xFFFFF3CD),
-                      textColor: const Color(0xFF856404),
+                  itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                    PopupMenuItem<String>(
+                      value: 'profile',
+                      enabled: false,
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 16,
+                            backgroundColor: Colors.grey[200],
+                            child: const Icon(
+                              Icons.person,
+                              size: 20,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                provider.user?.email ?? 'Usuario',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const Text(
+                                "Empleado",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      "de aprobación",
-                      style: TextStyle(color: Colors.grey),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem<String>(
+                      value: 'logout',
+                      child: Row(
+                        children: [
+                          Icon(Icons.logout, color: Colors.red),
+                          SizedBox(width: 8),
+                          Text(
+                            "Cerrar Sesión",
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
+                  child: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.grey[200],
+                    backgroundImage: emp?['photo'] != null
+                        ? NetworkImage(() {
+                            final raw = emp!['photo'];
+                            if (raw is String) return raw;
+                            if (raw is Map) return (raw['url'] ?? raw['path'] ?? '').toString();
+                            return '';
+                          }())
+                        : const NetworkImage('https://i.pravatar.cc/150?img=11'),
+                  ),
                 ),
               ],
             ),
-            actionLabel: "Ver todo >",
-            onActionTap: () => provider.setIndex(2),
-            icon: Icons.trending_up,
-          ),
+  
+            const SizedBox(height: 24),
+  
+            // 2. Greeting
+            Text(
+              "Hola, $fullName",
+              style: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF212529),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "Aquí tienes tu resumen de operaciones.",
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            ),
+  
+            const SizedBox(height: 24),
+  
+            // 3. Main Action Buttons
+            Row(
+              children: [
+                Expanded(
+                  child: _MainActionButton(
+                    icon: Icons.location_on,
+                    label: "Registrar Visita",
+                    color: Theme.of(context).primaryColor,
+                    textColor: Colors.white,
+                    onTap: () {
+                      // Nav to Visitas or Form
+                      provider.setIndex(3); // Navigate to Visitas Tab
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _MainActionButton(
+                    icon: Icons.camera_alt_outlined,
+                    label: "Subir Factura",
+                    color: Colors.white,
+                    textColor: const Color(0xFF212529),
+                    borderColor: Colors.grey[200],
+                    onTap: () {
+                      // Nav to Viaticos
+                      provider.setIndex(2);
+                    },
+                  ),
+                ),
+              ],
+            ),
+  
+            const SizedBox(height: 24),
+  
+            // 3.5 NUEVA ZONA: CHAT CRM (Solo Admin y Vendedor)
+            if (emp != null && (() {
+              final r = (emp['rol'] ?? '').toString().toLowerCase();
+              return r.contains('admin') || r.contains('vendedor') || r.contains('ventas') || r.contains('asesor');
+            })())
+              Padding(
+                padding: const EdgeInsets.only(bottom: 24.0),
+                child: _MainActionButton(
+                  icon: Icons.chat_bubble_outline,
+                  label: "CHAT CRM",
+                  color: const Color(0xFF25D366), // Color de WhatsApp
+                  textColor: Colors.white,
+                  onTap: () async {
+                    // SSO Bridge: login.php?app_uid=...&embed=1
+                    final url = Uri.parse("https://grupomecsa.net/ops/login.php?app_uid=${provider.user!.id}&embed=1");
+                    if (await canLaunchUrl(url)) {
+                      await launchUrl(url, mode: LaunchMode.inAppWebView);
+                    }
+                  },
+                ),
+              ),
 
-          const SizedBox(height: 16),
-
-          // 5. Próxima Reserva Card
-          if (nextReservation != null)
+            // 4. Mis Viáticos Card
             _DashboardCard(
-              title: "Próxima Reserva",
-              actionLabel: "Flotilla >",
-              onActionTap: () => provider.setIndex(1),
+              title: "Mis Viáticos",
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "₡${totalViaticos.toStringAsFixed(2)}",
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      _StatusBadge(
+                        text: "$pendientes pendientes",
+                        color: const Color(0xFFFFF3CD),
+                        textColor: const Color(0xFF856404),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        "de aprobación",
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              actionLabel: "Ver todo >",
+              onActionTap: () => provider.setIndex(2),
+              icon: Icons.trending_up,
+            ),
+  
+            const SizedBox(height: 16),
+  
+            // 5. Próxima Reserva Card
+            if (nextReservation != null)
+              _DashboardCard(
+                title: "Próxima Reserva",
+                actionLabel: "Flotilla >",
+                onActionTap: () => provider.setIndex(1),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        width: 70,
+                        height: 70,
+                        color: Colors.grey[300],
+                        child: nextReservation['vehiculos'] != null &&
+                                nextReservation['vehiculos']['foto'] != null
+                            ? Builder(builder: (ctx) {
+                                // foto puede ser String o Map<String, dynamic>
+                                final dynamic rawFoto =
+                                    nextReservation!['vehiculos']['foto'];
+                                String fotoUrl = '';
+                                if (rawFoto is String) {
+                                  fotoUrl = rawFoto;
+                                } else if (rawFoto is Map) {
+                                  fotoUrl = (rawFoto['url'] ?? rawFoto['path'] ?? '').toString();
+                                }
+                                if (fotoUrl.isEmpty) {
+                                  return const Icon(Icons.directions_car, size: 40, color: Colors.grey);
+                                }
+                                final String finalUrl = fotoUrl.startsWith('http')
+                                    ? fotoUrl
+                                    : Supabase.instance.client.storage
+                                        .from('flotilla')
+                                        .getPublicUrl(fotoUrl);
+                                return Image.network(
+                                  finalUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (ctx, _, __) => const Icon(
+                                    Icons.directions_car,
+                                    size: 40,
+                                    color: Colors.grey,
+                                  ),
+                                );
+                              })
+                            : const Icon(
+                                Icons.directions_car,
+                                size: 40,
+                                color: Colors.grey,
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            nextReservation['vehiculos'] != null
+                                ? "${nextReservation['vehiculos']['marca'] ?? ''} ${nextReservation['vehiculos']['modelo'] ?? ''}"
+                                : "Vehículo Reservado",
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            "Salida: ${nextReservation['fecha_salida']?.substring(0, 10) ?? 'N/A'}",
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            nextReservation['estado'] ?? 'Confirmada',
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              const _DashboardCard(
+                title: "Próxima Reserva",
+                child: Text("No tienes reservas activas."),
+                icon: Icons.directions_car,
+              ),
+  
+            const SizedBox(height: 16),
+  
+            // 6. Mi Perfil Card (Reemplaza Visitas)
+            _DashboardCard(
+              title: "Mi Perfil",
+              actionLabel: "Ver detalles >",
+              onActionTap: () {
+                // Mostrar dialog o navegar a perfil si existiera pantalla
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text("Información de Perfil"),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Email: ${provider.user?.email ?? 'N/A'}"),
+                        const SizedBox(height: 8),
+                        Text(
+                          "ID Empleado: ${provider.currentEmployeeId ?? 'N/A'}",
+                        ),
+                        const SizedBox(height: 8),
+                        Text("Versión App: 1.1.2"),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text("Cerrar"),
+                      ),
+                    ],
+                  ),
+                );
+              },
               child: Row(
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      width: 70,
-                      height: 70,
-                      color: Colors.grey[300],
-                      child: nextReservation['vehiculos'] != null &&
-                              nextReservation['vehiculos']['foto'] != null
-                          ? Builder(builder: (ctx) {
-                              // foto puede ser String o Map<String, dynamic>
-                              final dynamic rawFoto =
-                                  nextReservation!['vehiculos']['foto'];
-                              String fotoUrl = '';
-                              if (rawFoto is String) {
-                                fotoUrl = rawFoto;
-                              } else if (rawFoto is Map) {
-                                fotoUrl = (rawFoto['url'] ?? rawFoto['path'] ?? '').toString();
-                              }
-                              if (fotoUrl.isEmpty) {
-                                return const Icon(Icons.directions_car, size: 40, color: Colors.grey);
-                              }
-                              final String finalUrl = fotoUrl.startsWith('http')
-                                  ? fotoUrl
-                                  : Supabase.instance.client.storage
-                                      .from('flotilla')
-                                      .getPublicUrl(fotoUrl);
-                              return Image.network(
-                                finalUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (ctx, _, __) => const Icon(
-                                  Icons.directions_car,
-                                  size: 40,
-                                  color: Colors.grey,
-                                ),
-                              );
-                            })
-                          : const Icon(
-                              Icons.directions_car,
-                              size: 40,
-                              color: Colors.grey,
-                            ),
-                    ),
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundColor: Colors.grey[200],
+                    backgroundImage: emp?['photo'] != null
+                        ? NetworkImage(() {
+                            final raw = emp!['photo'];
+                            if (raw is String) return raw;
+                            if (raw is Map) return (raw['url'] ?? raw['path'] ?? '').toString();
+                            return '';
+                          }())
+                        : const NetworkImage('https://i.pravatar.cc/150?img=11'),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -463,26 +577,47 @@ class DashboardTab extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          nextReservation['vehiculos'] != null
-                              ? "${nextReservation['vehiculos']['marca'] ?? ''} ${nextReservation['vehiculos']['modelo'] ?? ''}"
-                              : "Vehículo Reservado",
+                          fullName,
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          "Salida: ${nextReservation['fecha_salida']?.substring(0, 10) ?? 'N/A'}",
-                          style: const TextStyle(color: Colors.grey),
+                          provider.getDepartmentName(emp?['departamento']),
+                          style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          nextReservation['estado'] ?? 'Confirmada',
-                          style: const TextStyle(
-                            color: Colors.green,
-                            fontWeight: FontWeight.w600,
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: emp?['activo'] == true
+                                ? Colors.green[50]
+                                : Colors.blue[50], // Light blue
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color:
+                                  (emp?['activo'] == true
+                                          ? Colors.green
+                                          : Colors.blue)
+                                      .withOpacity(0.3),
+                            ),
+                          ),
+                          child: Text(
+                            emp?['rol'] ?? "Empleado Activo",
+                            style: TextStyle(
+                              color: emp?['activo'] == true
+                                  ? Colors.green[800]
+                                  : Colors.blue[800],
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ],
@@ -490,120 +625,11 @@ class DashboardTab extends StatelessWidget {
                   ),
                 ],
               ),
-            )
-          else
-            const _DashboardCard(
-              title: "Próxima Reserva",
-              child: Text("No tienes reservas activas."),
-              icon: Icons.directions_car,
             ),
-
-          const SizedBox(height: 16),
-
-          // 6. Mi Perfil Card (Reemplaza Visitas)
-          _DashboardCard(
-            title: "Mi Perfil",
-            actionLabel: "Ver detalles >",
-            onActionTap: () {
-              // Mostrar dialog o navegar a perfil si existiera pantalla
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text("Información de Perfil"),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Email: ${provider.user?.email ?? 'N/A'}"),
-                      const SizedBox(height: 8),
-                      Text(
-                        "ID Empleado: ${provider.currentEmployeeId ?? 'N/A'}",
-                      ),
-                      const SizedBox(height: 8),
-                      Text("Versión App: 1.0.0"),
-                    ],
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text("Cerrar"),
-                    ),
-                  ],
-                ),
-              );
-            },
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Colors.grey[200],
-                  backgroundImage: emp?['photo'] != null
-                      ? NetworkImage(() {
-                          final raw = emp!['photo'];
-                          if (raw is String) return raw;
-                          if (raw is Map) return (raw['url'] ?? raw['path'] ?? '').toString();
-                          return '';
-                        }())
-                      : const NetworkImage('https://i.pravatar.cc/150?img=11'),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        fullName,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        provider.getDepartmentName(emp?['departamento']),
-                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: emp?['activo'] == true
-                              ? Colors.green[50]
-                              : Colors.blue[50], // Light blue
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color:
-                                (emp?['activo'] == true
-                                        ? Colors.green
-                                        : Colors.blue)
-                                    .withOpacity(0.3),
-                          ),
-                        ),
-                        child: Text(
-                          emp?['rol'] ?? "Empleado Activo",
-                          style: TextStyle(
-                            color: emp?['activo'] == true
-                                ? Colors.green[800]
-                                : Colors.blue[800],
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 40),
-        ],
+  
+            const SizedBox(height: 40),
+          ],
+        ),
       ),
     );
   }

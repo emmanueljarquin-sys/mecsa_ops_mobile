@@ -126,6 +126,26 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
       return;
     }
 
+    // ── VALIDACIÓN OBLIGATORIA ──
+    if (_odoIniCtrl.text.isEmpty || (double.tryParse(_odoIniCtrl.text) ?? 0) <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El kilometraje inicial es obligatorio.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    if (_fotoInicio == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Es obligatorio tomar la foto del odómetro para iniciar.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _iniciando = true);
 
     try {
@@ -269,6 +289,26 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
   // ══════════════════════════════════════════════════
   Future<void> _finalizarVisita() async {
     if (_visitaId == null) return;
+    // ── VALIDACIÓN OBLIGATORIA ──
+    if (_odoFinCtrl.text.isEmpty || (double.tryParse(_odoFinCtrl.text) ?? 0) <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('El kilometraje final es obligatorio.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    if (_fotoFin == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Es obligatorio tomar la foto del odómetro final.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _finalizando = true);
     final provider = context.read<AppProvider>();
     try {
@@ -499,7 +539,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
           const SizedBox(height: 16),
 
           // Odómetro
-          _label('ODÓMETRO INICIAL (km)'),
+          _label('ODÓMETRO INICIAL (km)', isRequired: true),
           TextFormField(
             controller: _odoIniCtrl,
             keyboardType:
@@ -509,7 +549,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
           const SizedBox(height: 20),
 
           // Foto odómetro
-          _label('FOTO DEL ODÓMETRO'),
+          _label('FOTO DEL ODÓMETRO', isRequired: true),
           GestureDetector(
             onTap: () => _tomarFoto(true),
             child: _fotoInicio != null
@@ -718,7 +758,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
           const SizedBox(height: 20),
 
           // Odómetro final
-          _label('ODÓMETRO FINAL (km)'),
+          _label('ODÓMETRO FINAL (km)', isRequired: true),
           TextFormField(
             controller: _odoFinCtrl,
             keyboardType:
@@ -738,7 +778,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
           const SizedBox(height: 20),
 
           // Foto odómetro final
-          _label('FOTO DEL ODÓMETRO FINAL'),
+          _label('FOTO DEL ODÓMETRO FINAL', isRequired: true),
           GestureDetector(
             onTap: () => _tomarFoto(false),
             child: _fotoFin != null
@@ -930,15 +970,27 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
     );
   }
 
-  Widget _label(String text) {
+  Widget _label(String text, {bool isRequired = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, top: 4),
-      child: Text(text,
+      child: RichText(
+        text: TextSpan(
+          text: text,
           style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w800,
               color: Colors.blueGrey.shade400,
-              letterSpacing: 0.5)),
+              letterSpacing: 0.5,
+              fontFamily: 'Inter'), // Aseguramos fuente si se usa RichText
+          children: [
+            if (isRequired)
+              const TextSpan(
+                text: ' *',
+                style: TextStyle(color: Colors.red, fontSize: 13),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
