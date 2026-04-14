@@ -73,12 +73,22 @@ class _VisitasScreenState extends State<VisitasScreen> {
                             if (_isSelectionMode) {
                               _toggleSelection(id);
                             } else {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => VisitaDetailScreen(visita: v),
-                                ),
-                              );
+                              final String estado = (v['estado'] ?? 'programada').toString().toLowerCase();
+                              if (estado == 'en_curso') {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => VisitaInicioScreen(visitaExistente: v),
+                                  ),
+                                );
+                              } else {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => VisitaDetailScreen(visita: v),
+                                  ),
+                                );
+                              }
                             }
                           },
                         );

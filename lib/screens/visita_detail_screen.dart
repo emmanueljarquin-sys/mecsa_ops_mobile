@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/app_provider.dart';
 import 'trip_nav_screen.dart';
+import 'visita_inicio_screen.dart';
 
 class VisitaDetailScreen extends StatefulWidget {
   final Map<String, dynamic> visita;
@@ -230,7 +232,19 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                             "FINALIZAR VISITA",
                             Icons.check_circle_outline,
                             Colors.green,
-                            () => _showCompleteDialog(context),
+                            () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => VisitaInicioScreen(visitaExistente: _visita),
+                                ),
+                              ).then((_) {
+                                // Al volver, refrescar los datos
+                                if (mounted) {
+                                  context.read<AppProvider>().refreshVisitas();
+                                }
+                              });
+                            },
                           ),
                         ],
                       ),
@@ -245,6 +259,8 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                       "DURACIÓN",
                       "${_visita['duracion_minutos'] ?? _visita['duracion'] ?? 'N/A'} minutos",
                     ),
+                    const SizedBox(height: 24),
+                    _buildPagoKmSection(),
                   ],
                 ],
               ),
@@ -253,6 +269,189 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildPagoKmSection() {
+    final bool pagado = _visita['pago_kilometraje'] == true;
+    final String? comprobante = _visita['comprobante_pago']?.toString();
+    final String? fechaPago = _visita['fecha_pago']?.toString();
+
+    // Construir URL del comprobante
+    String? comprobanteUrl;
+    if (comprobante != null && comprobante.isNotEmpty) {
+      const base = 'https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/';
+      if (comprobante.startsWith('http')) {
+        comprobanteUrl = comprobante;
+      } else {
+        comprobanteUrl = '$base$comprobante';
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "PAGO DE KILOMETRAJE",
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: Colors.blueGrey,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: pagado
+                ? const Color(0xFFEFF6FF)
+                : const Color(0xFFFFFBEB),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: pagado
+                  ? const Color(0xFF93C5FD)
+                  : const Color(0xFFFCD34D),
+              width: 1.5,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    pagado ? Icons.check_circle : Icons.access_time_rounded,
+                    color: pagado
+                        ? const Color(0xFF1D4ED8)
+                        : const Color(0xFFB45309),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    pagado ? '✓ PAGO CONFIRMADO' : '● PENDIENTE DE LIQUIDACIÓN',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      color: pagado
+                          ? const Color(0xFF1D4ED8)
+                          : const Color(0xFFB45309),
+                    ),
+                  ),
+                ],
+              ),
+              if (pagado && fechaPago != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Confirmado el ${_formatFechaPago(fechaPago)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.blue[700],
+                  ),
+                ),
+              ],
+              if (!pagado) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'El administrador confirmará tu pago y podrás ver el comprobante aquí.',
+                  style: TextStyle(fontSize: 12, color: Colors.amber[800]),
+                ),
+              ],
+              // Comprobante
+              if (pagado && comprobanteUrl != null) ...[
+                const SizedBox(height: 14),
+                const Text(
+                  'COMPROBANTE',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.blueGrey,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () async {
+                    final uri = Uri.parse(comprobanteUrl!);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        Image.network(
+                          comprobanteUrl,
+                          height: 160,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            height: 80,
+                            color: Colors.grey[100],
+                            child: const Center(
+                              child: Icon(Icons.picture_as_pdf,
+                                  color: Colors.red, size: 40),
+                            ),
+                          ),
+                        ),
+                        Container(
+                          height: 160,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.4),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Positioned(
+                          bottom: 10,
+                          child: Row(
+                            children: [
+                              Icon(Icons.open_in_new,
+                                  color: Colors.white, size: 14),
+                              SizedBox(width: 4),
+                              Text(
+                                'Toca para abrir',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              if (pagado && comprobanteUrl == null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Sin comprobante adjunto.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatFechaPago(String fechaIso) {
+    try {
+      final dt = DateTime.parse(fechaIso).toLocal();
+      return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+    } catch (_) {
+      return fechaIso;
+    }
   }
 
   Widget _buildMap(double lat, double lng) {

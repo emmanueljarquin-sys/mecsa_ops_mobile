@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../providers/app_provider.dart';
 import '../widgets/bottom_nav.dart';
 import 'flotilla_screen.dart';
 import 'viaticos_screen.dart';
 import 'visitas_screen.dart';
-import 'profile_screen.dart'; // Import nuevo perfil
+import 'visita_detail_screen.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,6 +20,99 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _didShowOptionalUpdate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // La inicialización se hace después del primer frame para tener acceso al provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<AppProvider>(context, listen: false);
+      if (provider.firebaseAvailable) {
+        _initFCMListeners();
+      }
+    });
+  }
+
+  void _initFCMListeners() {
+    final provider = Provider.of<AppProvider>(context, listen: false);
+    if (!provider.firebaseAvailable) return;
+
+    // Notificación recibida con app EN PRIMER PLANO
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      final data = message.data;
+      if (data['tipo'] == 'pago_kilometraje' && mounted) {
+        _showPagoBanner(data['visita_id']);
+      }
+    });
+
+    // Usuario tocó la notificación con app en segundo plano
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      final data = message.data;
+      if (data['tipo'] == 'pago_kilometraje' && mounted) {
+        _navigateToVisitaFromNotification(data['visita_id']);
+      }
+    });
+
+    // App abierta desde notificación (app estaba cerrada)
+    FirebaseMessaging.instance.getInitialMessage().then((message) {
+      if (message != null && mounted) {
+        final data = message.data;
+        if (data['tipo'] == 'pago_kilometraje') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _navigateToVisitaFromNotification(data['visita_id']);
+          });
+        }
+      }
+    });
+  }
+
+  void _showPagoBanner(String? visitaId) {
+    ScaffoldMessenger.of(context).showMaterialBanner(
+      MaterialBanner(
+        backgroundColor: const Color(0xFFEFF6FF),
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+        leading: const Icon(Icons.check_circle, color: Color(0xFF1D4ED8), size: 28),
+        content: const Text(
+          '¡Tu pago de kilometraje fue confirmado! Ver comprobante en tu visita.',
+          style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+              _navigateToVisitaFromNotification(visitaId);
+            },
+            child: const Text('VER', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          TextButton(
+            onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+            child: const Text('CERRAR'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _navigateToVisitaFromNotification(String? visitaId) {
+    // Navegar a la tab de visitas
+    final provider = context.read<AppProvider>();
+    provider.setIndex(3);
+    // Si tenemos el ID, buscamos la visita y abrimos el detalle
+    if (visitaId != null && visitaId.isNotEmpty) {
+      final visita = provider.visitas.firstWhere(
+        (v) => v['id'].toString() == visitaId,
+        orElse: () => {},
+      );
+      if (visita.isNotEmpty && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => VisitaDetailScreen(visita: visita),
+          ),
+        );
+      }
+    }
+  }
 
   void _showUpdateDialog(AppProvider provider) {
     showDialog(

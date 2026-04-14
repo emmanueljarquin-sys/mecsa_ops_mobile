@@ -29,9 +29,9 @@ class AppProvider extends ChangeNotifier {
   List<Map<String, dynamic>> reservas = [];
   List<Map<String, dynamic>> projects = [];
   List<Map<String, dynamic>> myReservations = [];
-  List<Map<String, dynamic>> employees = [];
-  List<Map<String, dynamic>> departments =
-      []; // Nuevo: Departamentos para registro
+  List<Map<String, dynamic>> departments = [];
+  List<Map<String, dynamic>> employees = []; // Lista general de empleados
+  List<Map<String, dynamic>> personalVehicles = []; // Vehículos personales del vendedor
   String? currentEmployeeId;
   Map<String, dynamic>?
   currentEmployeeData; // Nuevo: Datos completos del perfil
@@ -89,11 +89,12 @@ class AppProvider extends ChangeNotifier {
 
   String? get notificationMessage => _notificationMessage;
 
+  bool firebaseAvailable;
   bool isLoading = true;
   String? errorMessage;
   User? get user => _supabase.auth.currentUser;
 
-  AppProvider() {
+  AppProvider({this.firebaseAvailable = false}) {
     _init();
   }
 
@@ -109,7 +110,11 @@ class AppProvider extends ChangeNotifier {
         notifyListeners();
       }
     });
-    _initNotifications();
+
+    if (firebaseAvailable) {
+      _initNotifications();
+    }
+    
     _loadGpsPreferences();
     _checkAppVersion(); // Check for updates
     fetchData(); // Initial attempt
@@ -215,9 +220,11 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> _saveFcmToken() async {
+    if (!firebaseAvailable || currentEmployeeId == null) return;
+
     try {
       final token = await FirebaseMessaging.instance.getToken();
-      if (token != null && currentEmployeeId != null) {
+      if (token != null) {
         debugPrint("FCM Token: $token");
         await _supabase
             .from('Empleados')
@@ -412,6 +419,7 @@ class AppProvider extends ChangeNotifier {
         _fetchProjects(),
         _fetchMyReservations(),
         _fetchEmployees(),
+        fetchPersonalVehicles(),
       ]);
     } catch (e) {
       debugPrint("Error fetching data: $e");
@@ -620,6 +628,51 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> fetchPersonalVehicles() async {
+    try {
+      if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
+      if (currentEmployeeId == null) return;
+
+      final res = await _supabase
+          .schema('visitas')
+          .from('vehiculos_personales')
+          .select()
+          .eq('empleado_id', currentEmployeeId!)
+          .order('alias', ascending: true);
+
+      personalVehicles = List<Map<String, dynamic>>.from(res);
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Error fetching personal vehicles: $e");
+    }
+  }
+
+  Future<bool> registerPersonalVehicle({
+    required String alias,
+    required int antiguedad,
+    required String tipo,
+    required String combustible,
+  }) async {
+    try {
+      if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
+      
+      await _supabase.schema('visitas').from('vehiculos_personales').insert({
+        'empleado_id': currentEmployeeId,
+        'alias': alias,
+        'antiguedad': antiguedad,
+        'tipo': tipo,
+        'combustible': combustible,
+      });
+
+      await fetchPersonalVehicles();
+      return true;
+    } catch (e) {
+      debugPrint("Error registering personal vehicle: $e");
+      errorMessage = "Error al registrar vehículo: $e";
+      return false;
+    }
+  }
+
   Future<String?> uploadVisitaFoto(File file) async {
     try {
       final fileName = "visita_${DateTime.now().millisecondsSinceEpoch}.jpg";
@@ -645,6 +698,7 @@ class AppProvider extends ChangeNotifier {
     required double lat,
     required double lng,
     required String odometroInicial,
+    required String vehiculoId,
     File? fotoOdometro,
   }) async {
     try {
@@ -663,6 +717,7 @@ class AppProvider extends ChangeNotifier {
         'hora_inicio': now.toIso8601String().split('T')[1].substring(0, 8),
         'lat': lat,
         'lng': lng,
+        'vehiculo_id': vehiculoId,
         'odometro_inicial': double.tryParse(odometroInicial) ?? 0,
         'foto_odometro_inicio': fotoUrl,
         'cliente': 'En ruta',
@@ -715,64 +770,56 @@ class AppProvider extends ChangeNotifier {
       isLoading = true;
       notifyListeners();
 
-      String? fotoUrl;
+      // Para el cálculo de kilometraje, DEBEMOS usar la API PHP que tiene la lógica del tarifario.
+      // Primero subimos la foto si existe.
+      // Buscamos si la visita ya tiene foto (por si es una reanudación)
+      final visitaPrevia = visitas.firstWhere(
+        (v) => v['id'].toString() == id,
+        orElse: () => {},
+      );
+      String? fotoUrl = visitaPrevia['foto_odometro_fin'];
+
       if (fotoOdometroFin != null) {
         fotoUrl = await uploadVisitaFoto(fotoOdometroFin);
+        if (fotoUrl == null) {
+          errorMessage = "Error al subir la foto al servidor.";
+          return null;
+        }
       }
 
-      // Obtener datos iniciales para calcular km y duración
-      final resVisita = await _supabase
-          .schema('visitas')
-          .from('visitas')
-          .select('odometro_inicial, hora_inicio, fecha')
-          .eq('id', id)
-          .single();
-
-      final odoIni =
-          double.tryParse(resVisita['odometro_inicial']?.toString() ?? '0') ??
-          0;
-      final odoFin = double.tryParse(odometroFinal) ?? odoIni;
-      final km = odoFin - odoIni;
-
-      // Cálculo de duración aproximada
-      final now = DateTime.now();
-      final horaIniStr = resVisita['hora_inicio']?.toString() ?? '00:00:00';
-      final fechaStr =
-          resVisita['fecha']?.toString() ?? now.toIso8601String().split('T')[0];
-
-      int durationMin = 0;
-      try {
-        final startDt = DateTime.parse('${fechaStr}T$horaIniStr');
-        durationMin = now.difference(startDt).inMinutes;
-      } catch (_) {}
-
-      final updateData = {
-        'estado': 'completada',
-        'odometro_final': odoFin,
-        'km_recorridos': km > 0 ? km : 0,
-        'hora_fin': now.toIso8601String().split('T')[1].substring(0, 8),
-        'duracion_minutos': durationMin,
+      final url = Uri.parse('https://grupomecsa.net/ops/api/finish_visita.php');
+      
+      final body = {
+        'id': id,
+        'odometro_final': odometroFinal,
         'observaciones': observaciones,
         'proyectos_visitados': proyectosVisitados,
         'waypoints': waypoints,
-        'foto_odometro_fin': fotoUrl,
+        'foto_odometro_url': fotoUrl, 
       };
 
-      await _supabase
-          .schema('visitas')
-          .from('visitas')
-          .update(updateData)
-          .eq('id', id);
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(body),
+      );
 
-      await _fetchRutas();
-
-      return {
-        'km_recorridos': km > 0 ? km : 0,
-        'duracion_minutos': durationMin,
-      };
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          await _fetchRutas();
+          return Map<String, dynamic>.from(data);
+        } else {
+          errorMessage = data['error'] ?? "Error desconocido en la API";
+          return null;
+        }
+      } else {
+        errorMessage = "Error del servidor: ${response.statusCode}";
+        return null;
+      }
     } catch (e) {
-      debugPrint("Error finishing visita V2: $e");
-      errorMessage = "Error al finalizar viaje: $e";
+      debugPrint("Error finishing visita via PHP: $e");
+      errorMessage = "Error de red: $e";
       return null;
     } finally {
       isLoading = false;

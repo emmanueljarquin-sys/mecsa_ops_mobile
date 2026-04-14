@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -14,7 +15,8 @@ const String kMapsKey = "AIzaSyASZXQg6DuMo2NRbxnhmLssq6lVPaBL8ZU";
 // PANTALLA COMPLETA: WIZARD DE 3 PASOS
 // ─────────────────────────────────────────────────────────────────
 class VisitaInicioScreen extends StatefulWidget {
-  const VisitaInicioScreen({super.key});
+  final Map<String, dynamic>? visitaExistente;
+  const VisitaInicioScreen({super.key, this.visitaExistente});
 
   @override
   State<VisitaInicioScreen> createState() => _VisitaInicioScreenState();
@@ -30,6 +32,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
   bool _gettingGps = false;
   bool _iniciando = false;
   String? _visitaId;
+  String? _vehiculoId; // Vehículo seleccionado para el kilometraje
 
   // ── Paso 2 (Tracking) ──
   final Completer<GoogleMapController> _mapCtrl = Completer();
@@ -52,7 +55,65 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
   @override
   void initState() {
     super.initState();
-    _obtenerGPS();
+    if (widget.visitaExistente != null) {
+      _cargarVisitaExistente();
+    } else {
+      _obtenerGPS();
+    }
+  }
+
+  void _cargarVisitaExistente() {
+    final v = widget.visitaExistente!;
+    _visitaId = v['id'].toString();
+    _odoIniCtrl.text = v['km_inicial']?.toString() ?? '';
+    _vehiculoId = v['vehiculo_id']?.toString();
+    
+    // Proyectos previos
+    if (v['proyectos_visitados'] != null) {
+      _proysSel = List<String>.from(v['proyectos_visitados']);
+    }
+
+    // Reconstruir Waypoints y Ruta
+    if (v['waypoints'] != null) {
+      final List rawWps = v['waypoints'] is String 
+          ? json.decode(v['waypoints']) 
+          : v['waypoints'];
+      
+      _waypoints = List<Map<String, dynamic>>.from(rawWps);
+      _polylinePoints = _waypoints.map((wp) => LatLng(
+        (wp['lat'] as num).toDouble(), 
+        (wp['lng'] as num).toDouble()
+      )).toList();
+
+      if (_polylinePoints.isNotEmpty) {
+        _currentPos = _polylinePoints.last;
+        _posInicio = Position(
+          latitude: _polylinePoints.first.latitude,
+          longitude: _polylinePoints.first.longitude,
+          timestamp: DateTime.now(),
+          accuracy: 0,
+          altitude: 0,
+          heading: 0,
+          speed: 0,
+          speedAccuracy: 0,
+          altitudeAccuracy: 0,
+          headingAccuracy: 0,
+        );
+      }
+    }
+
+    // Calcular segundos transcurridos
+    if (v['hora_inicio_dt'] != null) {
+      final start = DateTime.tryParse(v['hora_inicio_dt']);
+      if (start != null) {
+        _segundos = DateTime.now().difference(start).inSeconds;
+        if (_segundos < 0) _segundos = 0;
+      }
+    }
+
+    _paso = 2; // Saltar al mapa
+    _iniciarTracking();
+    _iniciarTimer();
   }
 
   @override
@@ -145,6 +206,15 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
       );
       return;
     }
+    if (_vehiculoId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Es obligatorio seleccionar un vehículo para el cálculo de kilometraje.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() => _iniciando = true);
 
@@ -153,6 +223,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
         lat: _posInicio?.latitude ?? 0,
         lng: _posInicio?.longitude ?? 0,
         odometroInicial: _odoIniCtrl.text,
+        vehiculoId: _vehiculoId!,
         fotoOdometro: _fotoInicio,
       );
 
@@ -299,7 +370,16 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
       );
       return;
     }
-    if (_fotoFin == null) {
+
+    // Buscamos si la visita ya tiene foto en el provider (por si es una reanudación)
+    final provider = context.read<AppProvider>();
+    final visitaPrevia = provider.visitas.firstWhere(
+      (v) => v['id'].toString() == _visitaId,
+      orElse: () => {},
+    );
+    final String? fotoExistente = visitaPrevia['foto_odometro_fin'];
+
+    if (_fotoFin == null && (fotoExistente == null || fotoExistente.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Es obligatorio tomar la foto del odómetro final.'),
@@ -309,8 +389,17 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
       return;
     }
 
+    if (_obsCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Las notas de la visita son obligatorias. Describe lo realizado.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     setState(() => _finalizando = true);
-    final provider = context.read<AppProvider>();
     try {
       final result = await provider.finishVisitaV2(
         id: _visitaId!,
@@ -352,6 +441,12 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
                       km is num ? '${km.toStringAsFixed(1)} km' : '$km km'),
                   _summaryRow(Icons.location_on, 'Puntos GPS',
                       '${_waypoints.length} registros'),
+                  if (result['monto_pago_km'] != null)
+                    _summaryRow(
+                        Icons.payments_outlined,
+                        'Monto Viático',
+                        '₡${(result['monto_pago_km'] as num).toStringAsFixed(0)}',
+                        isHighlight: true),
                 ],
               ),
               actions: [
@@ -391,18 +486,21 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
     }
   }
 
-  Widget _summaryRow(IconData icon, String label, String value) {
+  Widget _summaryRow(IconData icon, String label, String value,
+      {bool isHighlight = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Colors.blueAccent),
+          Icon(icon, size: 20, color: isHighlight ? Colors.green : Colors.blueAccent),
           const SizedBox(width: 10),
           Text(label, style: const TextStyle(color: Colors.grey)),
           const Spacer(),
           Text(value,
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold, fontSize: 15)),
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: isHighlight ? Colors.green : Colors.black87)),
         ],
       ),
     );
@@ -438,6 +536,127 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
   // ─────────────────────────────────────────────────
   // PASO 1 UI
   // ─────────────────────────────────────────────────
+  void _mostrarRegistroVehiculo() {
+    final aliasCtrl = TextEditingController();
+    int? antiguedad;
+    String? tipo;
+    String? combustible;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+            left: 20,
+            right: 20,
+            top: 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Registrar Nuevo Vehículo',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              _label('Alias (Ej: Hilux Gris)', isRequired: true),
+              TextFormField(
+                controller: aliasCtrl,
+                decoration: _inputDeco('Nombre del vehículo'),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _label('Antigüedad (Años)', isRequired: true),
+                        DropdownButtonFormField<int>(
+                          decoration: _inputDeco('Años'),
+                          items: List.generate(20, (i) => i).map((i) {
+                            return DropdownMenuItem(value: i, child: Text('$i'));
+                          }).toList(),
+                          onChanged: (v) => antiguedad = v,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _label('Combustible', isRequired: true),
+                        DropdownButtonFormField<String>(
+                          decoration: _inputDeco('Tipo'),
+                          items: const [
+                            DropdownMenuItem(value: 'gasolina', child: Text('Gasolina')),
+                            DropdownMenuItem(value: 'gasolina a', child: Text('Gasol A (<=1.6)')),
+                            DropdownMenuItem(value: 'gasolina b', child: Text('Gasol B (>1.6)')),
+                            DropdownMenuItem(value: 'diesel', child: Text('Diesel')),
+                            DropdownMenuItem(value: 'electrico', child: Text('Elec')),
+                          ],
+                          onChanged: (v) => combustible = v,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _label('Tipo de Vehículo', isRequired: true),
+              DropdownButtonFormField<String>(
+                decoration: _inputDeco('Tipo'),
+                items: const [
+                  DropdownMenuItem(value: 'rural', child: Text('Rural')),
+                  DropdownMenuItem(value: 'liviano', child: Text('Liviano')),
+                  DropdownMenuItem(value: 'motocicleta', child: Text('Moto')),
+                  DropdownMenuItem(value: 'hibrido', child: Text('Híbrido')),
+                  DropdownMenuItem(value: 'electrico', child: Text('Eléctrico')),
+                ],
+                onChanged: (v) => tipo = v,
+              ),
+              const SizedBox(height: 30),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E293B),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () async {
+                    if (aliasCtrl.text.isEmpty || antiguedad == null || tipo == null || combustible == null) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Cargue todos los campos')));
+                      return;
+                    }
+                    final ok = await context.read<AppProvider>().registerPersonalVehicle(
+                      alias: aliasCtrl.text,
+                      antiguedad: antiguedad!,
+                      tipo: tipo!,
+                      combustible: combustible!,
+                    );
+                    if (ok && mounted) {
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vehículo registrado')));
+                    }
+                  },
+                  child: const Text('Guardar Vehículo', style: TextStyle(color: Colors.white)),
+                ),
+              ),
+              const SizedBox(height: 30),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildPaso1() {
     final provider = context.watch<AppProvider>();
     final emp = provider.currentEmployeeData;
@@ -535,6 +754,39 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
                   ),
               ],
             ),
+          ),
+          const SizedBox(height: 16),
+
+          // Selección de Vehículo
+          _label('VEHÍCULO PERSONAL', isRequired: true),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _vehiculoId,
+                  isExpanded: true,
+                  decoration: _inputDeco('Seleccione su vehículo'),
+                  items: provider.personalVehicles.map((v) {
+                    return DropdownMenuItem<String>(
+                      value: v['id'].toString(),
+                      child: Text(v['alias'] ?? 'Vehículo'),
+                    );
+                  }).toList(),
+                  onChanged: (val) => setState(() => _vehiculoId = val),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.add, color: Colors.white),
+                  onPressed: _mostrarRegistroVehiculo,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
 
@@ -788,7 +1040,17 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
                         height: 160, width: double.infinity,
                         fit: BoxFit.cover),
                   )
-                : Container(
+                : (context.read<AppProvider>().visitas.firstWhere((v) => v['id'].toString() == _visitaId, orElse: () => {})['foto_odometro_fin'] != null)
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.network(
+                          context.read<AppProvider>().visitas.firstWhere((v) => v['id'].toString() == _visitaId)['foto_odometro_fin'],
+                          height: 160, width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => const Center(child: Text('Error al cargar foto previa')),
+                        ),
+                      )
+                    : Container(
                     height: 120,
                     decoration: BoxDecoration(
                       color: Colors.red.shade50,
@@ -844,7 +1106,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
             controller: _obsCtrl,
             maxLines: 4,
             decoration: _inputDeco(
-                'Describe lo que observaste, clientes contactados, incidencias...'),
+                'Ejemplo: Se realizó el levantamiento arquitectónico en planta baja y se contactó al encargado.'),
           ),
           const SizedBox(height: 32),
 

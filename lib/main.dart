@@ -25,24 +25,31 @@ void main() async {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3aHV6ZWtqcG9hcGFtaWpsdnVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1NzM2ODMsImV4cCI6MjA3NzE0OTY4M30.2wnEN8HG2LA3CRhDbHQdu7drrsF7-G7zg-CCt7rqkeQ',
   );
 
+  bool firebaseAvailable = false;
   try {
     await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    firebaseAvailable = true;
+    print("Firebase inicializado correctamente");
   } catch (e) {
     print("Firebase initialization failed: $e");
-    // La app puede continuar sin Firebase en modo degradado
   }
 
-  runApp(const MecsaOpsApp());
+  runApp(MecsaOpsApp(firebaseAvailable: firebaseAvailable));
 }
 
 class MecsaOpsApp extends StatelessWidget {
-  const MecsaOpsApp({super.key});
+  final bool firebaseAvailable;
+  const MecsaOpsApp({super.key, required this.firebaseAvailable});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
-      providers: [ChangeNotifierProvider(create: (_) => AppProvider())],
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => AppProvider(firebaseAvailable: firebaseAvailable),
+        )
+      ],
       child: MaterialApp(
         title: 'MecsaOPS Mobile',
         debugShowCheckedModeBanner: false,
