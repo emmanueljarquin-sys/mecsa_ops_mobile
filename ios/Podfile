@@ -1,3 +1,5 @@
+load File.join(File.dirname(File.realpath(__FILE__)), 'Flutter', 'podhelper.rb')
+
 platform :ios, '13.0'
 
 # CocoaPods analytics sends network stats synchronous priority.
