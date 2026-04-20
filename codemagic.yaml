@@ -1,0 +1,43 @@
+workflows:
+  ios-android-release:
+    name: release_workflow
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      vars:
+        FLUTTER_VERSION: stable
+        XCODE_WORKSPACE: "ios/Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+    flutter: stable
+    xcode: latest
+    cocoapods: default
+    scripts:
+      - name: Set up Firebase (iOS)
+        script: |
+          echo $GOOGLE_SERVICE_INFO_IOS | base64 --decode > ios/Runner/GoogleService-Info.plist
+      - name: Set up Firebase (Android)
+        script: |
+          echo $GOOGLE_SERVICES_JSON_ANDROID | base64 --decode > android/app/google-services.json
+      - name: Get Flutter dependencies
+        script: |
+          flutter pub get
+      - name: Generate Launcher Icons
+        script: |
+          dart run flutter_launcher_icons
+      - name: Install CocoaPods
+        script: |
+          cd ios && pod install
+      - name: Build Android Bundle (AAB)
+        script: |
+          flutter build appbundle --release --no-codesign
+      - name: Build iOS IPA
+        script: |
+          # Nota: Para compilación completa necesitas configurar el Code Signing Automático en la UI de Codemagic
+          flutter build ipa --release --no-codesign
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
+      - build/ios/ipa/*.ipa
+    publishing:
+      email:
+        recipients:
+          - emmanuel.jarquin@grupomecsa.com # Reemplaza con tu correo
