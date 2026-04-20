@@ -58,6 +58,7 @@ class TrackingService {
       try {
         await _supabase.schema('visitas').from('ops_tracking').insert({
           'user_id': user.id,
+          'user_email': user.email,
           'latitude': position.latitude,
           'longitude': position.longitude,
           'accuracy': position.accuracy,
