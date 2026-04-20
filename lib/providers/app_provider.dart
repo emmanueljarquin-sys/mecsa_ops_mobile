@@ -9,10 +9,14 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../services/tracking_service.dart';
 
 class AppProvider extends ChangeNotifier {
   int _currentIndex = 0;
   final _supabase = Supabase.instance.client;
+  final _trackingService = TrackingService();
+
+  TrackingService get trackingService => _trackingService;
 
   int get currentIndex => _currentIndex;
 
@@ -392,7 +396,20 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    _trackingService.stopTracking();
     await _supabase.auth.signOut();
+  }
+
+  // Tracking Controls
+  bool get isTracking => _trackingService.isTracking;
+
+  Future<void> toggleTracking({String? activityId}) async {
+    if (isTracking) {
+      _trackingService.stopTracking();
+    } else {
+      await _trackingService.startTracking(activityId: activityId);
+    }
+    notifyListeners();
   }
 
   void setIndex(int index) {

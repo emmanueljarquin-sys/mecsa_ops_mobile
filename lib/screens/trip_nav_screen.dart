@@ -221,6 +221,14 @@ class _TripNavScreenState extends State<TripNavScreen> {
       );
 
       if (mounted) {
+        final provider = Provider.of<AppProvider>(context, listen: false);
+        
+        // --- INTEGRACIÓN CON MONITOREO WEB ---
+        // Iniciamos el rastreo persistente en Supabase enviando el ID de actividad
+        provider.trackingService.startTracking(
+          activityId: widget.entity['id']?.toString()
+        );
+
         setState(() {
           _currentPosition = LatLng(position.latitude, position.longitude);
           _lastRecordedPosition = position;
@@ -244,7 +252,7 @@ class _TripNavScreenState extends State<TripNavScreen> {
         Future.delayed(const Duration(milliseconds: 500), () => _loadRoute());
       }
 
-      // Escuchar cambios de ubicación
+      // Escuchar cambios de ubicación (Para la UI local de navegación)
       Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
