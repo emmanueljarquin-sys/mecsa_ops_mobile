@@ -240,6 +240,9 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
         setState(() => _paso = 2);
         _iniciarTracking();
         _iniciarTimer();
+
+        // --- AUTOMATIZACIÓN DE RASTREO ---
+        provider.trackingService.startTracking(activityId: _visitaId);
       } else {
         throw provider.errorMessage ?? 'Error al iniciar visita';
       }
@@ -417,6 +420,9 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
         final m = dur % 60;
 
         if (mounted) {
+          // --- AUTOMATIZACIÓN DE RASTREO ---
+          provider.trackingService.stopTracking();
+
           showDialog(
             context: context,
             barrierDismissible: false,

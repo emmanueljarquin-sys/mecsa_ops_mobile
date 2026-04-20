@@ -125,9 +125,11 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
       );
 
       if (success && mounted) {
-        // Limpiar la distancia rastreada si el registro fue de entrada
+        // --- AUTOMATIZACIÓN DE RASTREO ---
+        // Detener rastreo si el registro fue de entrada (devolución)
         if (widget.tipo == 'entrada') {
           provider.clearTripDistance(widget.reservation['id'].toString());
+          provider.trackingService.stopTracking();
         }
 
         Navigator.pop(context);

@@ -468,20 +468,6 @@ class DashboardTab extends StatelessWidget {
   
             const SizedBox(height: 16),
 
-            // NUEVO: Botón de Rastreo en Vivo
-            _MainActionButton(
-              icon: Icons.map_outlined,
-              label: "Rastreo en Vivo (Uber Style)",
-              color: const Color(0xFF1D4ED8),
-              textColor: Colors.white,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LiveMapScreen()),
-                );
-              },
-            ),
-
             const SizedBox(height: 24),
   
             // 3.5 NUEVA ZONA: CHAT CRM (Solo Admin y Vendedor)

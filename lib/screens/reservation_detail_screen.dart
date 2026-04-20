@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
+import '../providers/app_provider.dart';
 import 'vehicle_register_screen.dart';
 import 'trip_nav_screen.dart';
 
@@ -332,15 +334,22 @@ class ReservationDetailScreen extends StatelessWidget {
                 "INICIAR VIAJE (DENTRO DE APP)",
                 Icons.navigation,
                 Theme.of(context).primaryColor,
-                () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => TripNavScreen(
-                      entity: reservation,
-                      destination: reservation['ubicacion'] ?? "Destino",
+                () {
+                  // --- AUTOMATIZACIÓN DE RASTREO ---
+                  context.read<AppProvider>().trackingService.startTracking(
+                    activityId: reservaId
+                  );
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TripNavScreen(
+                        entity: reservation,
+                        destination: reservation['ubicacion'] ?? "Destino",
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
               const SizedBox(height: 12),
               _buildActionButton(
