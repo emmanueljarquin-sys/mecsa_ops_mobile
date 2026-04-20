@@ -30,6 +30,7 @@ class AppProvider extends ChangeNotifier {
   List<Map<String, dynamic>> projects = [];
   List<Map<String, dynamic>> myReservations = [];
   List<Map<String, dynamic>> departments = [];
+  List<Map<String, dynamic>> companies = [];
   List<Map<String, dynamic>> employees = []; // Lista general de empleados
   List<Map<String, dynamic>> personalVehicles = []; // Vehículos personales del vendedor
   String? currentEmployeeId;
@@ -308,6 +309,7 @@ class AppProvider extends ChangeNotifier {
     required String apellido,
     required String telefono,
     required int departamentoId,
+    required String empresaId,
     File? photoFile,
   }) async {
     try {
@@ -368,6 +370,7 @@ class AppProvider extends ChangeNotifier {
         'email': email,
         'telefono': telefono,
         'departamento': departamentoId,
+        'empresa_id': empresaId,
         'id_user': response.user!.id,
         'activo': false,
         if (photoUrl != null) 'photo': photoUrl,
@@ -403,8 +406,11 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Siempre intentar cargar departamentos (necesario para registro)
-      await fetchDepartments();
+      // Siempre intentar cargar departamentos y empresas (necesario para registro)
+      await Future.wait([
+        fetchDepartments(),
+        fetchCompanies(),
+      ]);
 
       if (user == null) return;
 
@@ -891,6 +897,26 @@ class AppProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint("Error loading departments: $e");
       departments = [];
+    }
+  }
+
+  Future<void> fetchCompanies() async {
+    try {
+      final res = await _supabase
+          .from('Empresas')
+          .select('id, nombre_comercial')
+          .order('nombre_comercial', ascending: true);
+
+      companies = (res as List)
+          .map((e) => {
+            'id': e['id'],
+            'nombre': e['nombre_comercial'] ?? 'Sin nombre',
+          })
+          .toList();
+      notifyListeners();
+    } catch (e) {
+      debugPrint("Error loading companies: $e");
+      companies = [];
     }
   }
 

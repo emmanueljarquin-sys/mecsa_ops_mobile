@@ -20,6 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _apellidoController = TextEditingController();
   final _telefonoController = TextEditingController();
   int? _selectedDepartamentoId;
+  String? _selectedEmpresaId;
   File? _photoFile;
   bool _isLogin = true;
   bool _isLoading = false;
@@ -202,6 +203,36 @@ class _LoginScreenState extends State<LoginScreen> {
                                 labelText: "Departamento",
                                 prefixIcon: Icon(
                                   Icons.business_rounded,
+                                  color: AppTheme.secondaryColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              isDense: true,
+                              value: _selectedEmpresaId,
+                              items: provider.companies.map((emp) {
+                                return DropdownMenuItem<String>(
+                                  value: emp['id'].toString(),
+                                  child: Text(
+                                    emp['nombre'] ?? 'Sin nombre',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                setState(() => _selectedEmpresaId = val);
+                              },
+                              decoration: const InputDecoration(
+                                labelText: "Empresa",
+                                prefixIcon: Icon(
+                                  Icons.location_city_rounded,
                                   color: AppTheme.secondaryColor,
                                 ),
                               ),
@@ -559,7 +590,8 @@ class _LoginScreenState extends State<LoginScreen> {
             (nombre.isEmpty ||
                 apellido.isEmpty ||
                 telefono.isEmpty ||
-                _selectedDepartamentoId == null))) {
+                _selectedDepartamentoId == null ||
+                _selectedEmpresaId == null))) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Por favor completa todos los campos")),
       );
@@ -579,6 +611,7 @@ class _LoginScreenState extends State<LoginScreen> {
         apellido: apellido,
         telefono: telefono,
         departamentoId: _selectedDepartamentoId!,
+        empresaId: _selectedEmpresaId!,
         photoFile: _photoFile,
       );
     }
