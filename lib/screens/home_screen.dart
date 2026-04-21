@@ -477,18 +477,24 @@ class DashboardTab extends StatelessWidget {
             })())
               Padding(
                 padding: const EdgeInsets.only(bottom: 24.0),
-                child: _MainActionButton(
-                  icon: Icons.chat_bubble_outline,
-                  label: "CHAT CRM",
-                  color: const Color(0xFF25D366), // Color de WhatsApp
-                  textColor: Colors.white,
-                  onTap: () async {
-                    // SSO Bridge: login.php?app_uid=...&embed=1
-                    final url = Uri.parse("https://grupomecsa.net/ops/login.php?app_uid=${provider.user!.id}&embed=1");
-                    if (await canLaunchUrl(url)) {
-                      await launchUrl(url, mode: LaunchMode.inAppWebView);
-                    }
-                  },
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _MainActionButton(
+                        icon: Icons.chat_bubble_outline,
+                        label: "CHAT CRM",
+                        color: const Color(0xFF25D366), // Color de WhatsApp
+                        textColor: Colors.white,
+                        onTap: () async {
+                          // SSO Bridge: login.php?app_uid=...&embed=1
+                          final url = Uri.parse("https://grupomecsa.net/ops/login.php?app_uid=${provider.user!.id}&embed=1");
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(url, mode: LaunchMode.inAppWebView);
+                          }
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
