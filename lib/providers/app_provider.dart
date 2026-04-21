@@ -906,7 +906,7 @@ class AppProvider extends ChangeNotifier {
       final res = await _supabase
           .schema('cms')
           .from('departamento')
-          .select('id, nombre')
+          .select('id, nombre, id_empresa')
           .order('nombre', ascending: true);
 
       departments = List<Map<String, dynamic>>.from(res as List);

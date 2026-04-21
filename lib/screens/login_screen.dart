@@ -25,6 +25,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLogin = true;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  List<Map<String, dynamic>> _filteredDepartments = [];
+
 
   @override
   void dispose() {
@@ -41,6 +43,20 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLogin = !_isLogin;
     });
   }
+
+  void _updateFilteredDepartments(String? empresaId, AppProvider provider) {
+    setState(() {
+      _selectedDepartamentoId = null;
+      if (empresaId == null || empresaId.isEmpty) {
+        _filteredDepartments = [];
+      } else {
+        _filteredDepartments = provider.departments
+            .where((d) => d['id_empresa'].toString() == empresaId)
+            .toList();
+      }
+    });
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -178,36 +194,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               keyboardType: TextInputType.phone,
                             ),
                             const SizedBox(height: 16),
-                            DropdownButtonFormField<int>(
-                              isExpanded: true,
-                              isDense: true,
-                              value: _selectedDepartamentoId,
-                              items: provider.departments.map((dep) {
-                                return DropdownMenuItem<int>(
-                                  value: dep['id'],
-                                  child: Text(
-                                    dep['nombre'] ?? 'Sin nombre',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 14,
-                                      color: Color(0xFF1E293B),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (val) {
-                                setState(() => _selectedDepartamentoId = val);
-                              },
-                              decoration: const InputDecoration(
-                                labelText: "Departamento",
-                                prefixIcon: Icon(
-                                  Icons.business_rounded,
-                                  color: AppTheme.secondaryColor,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
                             DropdownButtonFormField<String>(
                               isExpanded: true,
                               isDense: true,
@@ -228,6 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               }).toList(),
                               onChanged: (val) {
                                 setState(() => _selectedEmpresaId = val);
+                                _updateFilteredDepartments(val, provider);
                               },
                               decoration: const InputDecoration(
                                 labelText: "Empresa",
@@ -238,6 +225,40 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
+                            DropdownButtonFormField<int>(
+                              isExpanded: true,
+                              isDense: true,
+                              value: _selectedDepartamentoId,
+                              disabledHint: const Text("Selecciona Empresa primero"),
+                              items: _filteredDepartments.map((dep) {
+                                return DropdownMenuItem<int>(
+                                  value: dep['id'],
+                                  child: Text(
+                                    dep['nombre'] ?? 'Sin nombre',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                      color: Color(0xFF1E293B),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: _selectedEmpresaId == null 
+                                ? null 
+                                : (val) {
+                                    setState(() => _selectedDepartamentoId = val);
+                                  },
+                              decoration: const InputDecoration(
+                                labelText: "Departamento",
+                                prefixIcon: Icon(
+                                  Icons.business_rounded,
+                                  color: AppTheme.secondaryColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+
                           ],
 
                           _buildTextField(
