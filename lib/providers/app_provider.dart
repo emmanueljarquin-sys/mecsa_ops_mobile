@@ -69,7 +69,7 @@ class AppProvider extends ChangeNotifier {
       final res = await _supabase
           .from('Empleados')
           .select('id, codigo_empleado, nombre, apellido, email, telefono, activo, photo, id_rol, fcm_token, rol, chat_role, sistemas_acceso, departamento')
-          .eq('email', user!.email!)
+          .ilike('email', user!.email!)
           .maybeSingle();
 
       if (res != null) {
@@ -257,7 +257,7 @@ class AppProvider extends ChangeNotifier {
         final empRes = await _supabase
             .from('Empleados')
             .select('activo')
-            .eq('email', email)
+            .ilike('email', email)
             .maybeSingle();
 
         if (empRes != null && empRes['activo'] == false) {
@@ -321,31 +321,7 @@ class AppProvider extends ChangeNotifier {
       errorMessage = null;
       notifyListeners();
 
-      // 1. Obtener el último código de empleado para el correlativo (GM-XXX)
-      final lastEmployee = await _supabase
-          .from('Empleados')
-          .select('codigo_empleado')
-          .like('codigo_empleado', 'GM-%')
-          .order('id', ascending: false)
-          .limit(1)
-          .maybeSingle();
-
-      int nextCode = 1;
-      if (lastEmployee != null && lastEmployee['codigo_empleado'] != null) {
-        final lastCodeStr = lastEmployee['codigo_empleado'].toString();
-        // Extraer número después del prefijo GM-
-        final parts = lastCodeStr.split('-');
-        if (parts.length > 1) {
-          final numberPart = parts.last;
-          final lastCodeNum = int.tryParse(numberPart);
-          if (lastCodeNum != null) {
-            nextCode = lastCodeNum + 1;
-          }
-        }
-      }
-      final String codigoEmpleado = "GM-${nextCode.toString().padLeft(3, '0')}";
-
-      // 2. Registrar en auth.users
+      // 1. Registrar en auth.users
       final response = await _supabase.auth.signUp(
         email: email,
         password: password,
@@ -353,35 +329,62 @@ class AppProvider extends ChangeNotifier {
       );
 
       if (response.user == null) throw "Error al crear usuario en Auth";
+      final String userId = response.user!.id;
 
-      // 3. Subir foto solo si se proporciona
+      // 2. Subir foto solo si se proporciona
       String? photoUrl;
       if (photoFile != null) {
-        final fileExt = photoFile.path.split('.').last;
-        final fileName =
-            'register_${response.user!.id}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-        final filePath = 'temp_registration/$fileName';
+        try {
+          final fileExt = photoFile.path.split('.').last;
+          final fileName =
+              'register_${userId}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+          final filePath = 'temp_registration/$fileName';
 
-        await _supabase.storage.from('empleados').upload(filePath, photoFile);
-        photoUrl = _supabase.storage.from('empleados').getPublicUrl(filePath);
+          await _supabase.storage.from('empleados').upload(filePath, photoFile);
+          photoUrl = _supabase.storage.from('empleados').getPublicUrl(filePath);
+        } catch (e) {
+          debugPrint("Upload foto falló (sigo sin foto): $e");
+        }
       }
 
-      // 4. Crear registro en la tabla Empleados
-      await _supabase.from('Empleados').insert({
-        'codigo_empleado': codigoEmpleado,
-        'nombre': nombre,
-        'apellido': apellido,
-        'email': email,
-        'telefono': telefono,
-        'departamento': departamentoId,
-        'empresa_id': empresaId,
-        'id_user': response.user!.id,
-        'activo': false,
-        if (photoUrl != null) 'photo': photoUrl,
-      });
+      // 3. Crear el Empleado vía endpoint PHP (usa service_role para saltar RLS).
+      //    NOTA: hacer el INSERT desde Flutter con el cliente del usuario recién
+      //    creado falla por RLS — el JWT aún no está confirmado/autorizado para
+      //    INSERT en Empleados. El endpoint corre con service_role, autorizado.
+      final empResp = await http.post(
+        Uri.parse('https://grupomecsa.net/ops/api/register_employee_mobile.php'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'id_user'     : userId,
+          'nombre'      : nombre,
+          'apellido'    : apellido,
+          'email'       : email,
+          'telefono'    : telefono,
+          'departamento': departamentoId,
+          'empresa_id'  : empresaId,
+          if (photoUrl != null) 'photo': photoUrl,
+        }),
+      );
 
-      // Importante: Cerrar sesión inmediatamente para que no entre a la App
-      // hasta que el administrador lo apruebe.
+      Map<String, dynamic> empBody;
+      try {
+        empBody = jsonDecode(empResp.body) as Map<String, dynamic>;
+      } catch (_) {
+        empBody = {'success': false, 'error': 'Respuesta inválida del servidor'};
+      }
+
+      if (empResp.statusCode < 200 || empResp.statusCode >= 300 ||
+          empBody['success'] != true) {
+        // El INSERT en Empleados falló. El auth user ya está creado, pero
+        // sin Empleado asociado. Cerramos sesión y reportamos el error
+        // claro al usuario para que reintente o contacte soporte.
+        await _supabase.auth.signOut();
+        throw empBody['error']?.toString() ??
+            "No se pudo crear el registro de empleado (HTTP ${empResp.statusCode})";
+      }
+
+      // 4. Cerrar sesión inmediatamente para que no entre a la App
+      //    hasta que el administrador lo apruebe.
       await _supabase.auth.signOut();
 
       return true;
@@ -971,6 +974,35 @@ class AppProvider extends ChangeNotifier {
         }
       } // NEW
 
+      // ── BLOQUEO POR STRIKES ─────────────────────────────────────────
+      // Antes de permitir la reserva, aplicar bloqueo si corresponde
+      // y luego validar el flag. Esto auto-bloquea a quien acumuló 3+
+      // reservas vencidas sin registro y rechaza la nueva reserva.
+      try {
+        await _supabase
+            .schema('flotilla')
+            .rpc('aplicar_bloqueo_si_corresponde',
+                params: {'p_empleado_id': currentEmployeeId});
+
+        final empCheck = await _supabase
+            .from('Empleados')
+            .select('reservas_bloqueado')
+            .eq('id', currentEmployeeId as Object)
+            .maybeSingle();
+
+        if (empCheck != null && empCheck['reservas_bloqueado'] == true) {
+          throw "Tu cuenta está bloqueada para hacer reservas. "
+              "Acumulaste 3 o más reservas sin registrar salida. "
+              "Contacta al administrador para desbloquear.";
+        }
+      } catch (e) {
+        if (e is String) rethrow;
+        // Si la RPC falla por permisos u otra razón, no bloqueamos
+        // creación: priorizar operatividad sobre la regla nueva.
+        debugPrint("aplicar_bloqueo_si_corresponde falló (continuo): $e");
+      }
+      // ─────────────────────────────────────────────────────────────────
+
       final String vehiculoId = reservationData['vehiculo_id'].toString();
       final String startStr = reservationData['fecha_salida'];
       final String endStr = reservationData['fecha_regreso'];
@@ -1023,6 +1055,85 @@ class AppProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint("Error creating reservation: $e");
       errorMessage = "Error al crear reserva: ${e.toString()}";
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Cancela una reserva propia. Solo el solicitante y solo si:
+  /// - estado in (Pendiente, Aprobada)
+  /// - fecha_salida es futura
+  /// - no hay registro de salida todavía
+  /// Las validaciones de propietario/estado se hacen aquí pero el UI debe
+  /// gatear el botón para no llegar nunca a llamar esto en escenarios inválidos.
+  Future<bool> cancelarReserva({
+    required String reservaId,
+    String motivo = '',
+  }) async {
+    try {
+      isLoading = true;
+      errorMessage = null;
+      notifyListeners();
+
+      // Carga la reserva para validar estado y propietario
+      final r = await _supabase
+          .schema('flotilla')
+          .from('reservas')
+          .select('id, estado, fecha_salida, empleado_id')
+          .eq('id', reservaId)
+          .maybeSingle();
+
+      if (r == null) throw "Reserva no encontrada";
+
+      final String estado = (r['estado'] ?? '').toString();
+      final String estadoUpper = estado.toUpperCase();
+      if (estadoUpper.contains('CANCEL') ||
+          estadoUpper.contains('RECHAZ') ||
+          estadoUpper.contains('COMPLET')) {
+        throw "Esta reserva ya está $estado";
+      }
+
+      final fechaSalida = DateTime.tryParse(r['fecha_salida']?.toString() ?? '');
+      if (fechaSalida != null && fechaSalida.isBefore(DateTime.now())) {
+        throw "No se puede cancelar: la salida ya pasó";
+      }
+
+      if (currentEmployeeId == null || r['empleado_id'] != currentEmployeeId) {
+        throw "Solo el solicitante puede cancelar esta reserva";
+      }
+
+      // ¿Ya hay registro de salida? Si sí, no se puede cancelar.
+      final regs = await _supabase
+          .schema('flotilla')
+          .from('registros_vehiculos')
+          .select('id, tipo')
+          .eq('reserva_id', reservaId);
+      final tieneSalida =
+          (regs as List).any((x) => (x['tipo'] ?? '').toString().toLowerCase() == 'salida');
+      if (tieneSalida) {
+        throw "Ya iniciaste el viaje, no se puede cancelar";
+      }
+
+      // PATCH
+      await _supabase.schema('flotilla').from('reservas').update({
+        'estado': 'Cancelada',
+        'comentarios': motivo.isNotEmpty
+            ? 'Cancelada por el solicitante: $motivo'
+            : 'Cancelada por el solicitante',
+      }).eq('id', reservaId);
+
+      // Refresh
+      await Future.wait([
+        _fetchFlotilla(),
+        _fetchMyReservations(),
+      ]);
+
+      return true;
+    } catch (e) {
+      debugPrint("Error cancelando reserva: $e");
+      errorMessage = e.toString();
       return false;
     } finally {
       isLoading = false;

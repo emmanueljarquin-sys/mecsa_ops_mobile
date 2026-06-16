@@ -151,6 +151,14 @@ class ReservationDetailScreen extends StatelessWidget {
                     _buildRegistrationButtons(context),
                     const SizedBox(height: 30),
                   ],
+
+                  // --- Botón Cancelar Reserva: solo si futura y aún cancelable ---
+                  if ((estado == 'PENDIENTE' || estado.contains('APROB')) &&
+                      _puedeCancelar(reservation)) ...[
+                    _buildCancelButton(context),
+                    const SizedBox(height: 24),
+                  ],
+
                   _buildSectionTitle("ITINERARIO"),
                   const SizedBox(height: 12),
                   _buildInfoRow(
@@ -263,6 +271,105 @@ class ReservationDetailScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // Cancelar reserva
+  // ────────────────────────────────────────────────────────────
+  bool _puedeCancelar(Map<String, dynamic> r) {
+    final fs = DateTime.tryParse(r['fecha_salida']?.toString() ?? '');
+    if (fs == null) return false;
+    return fs.isAfter(DateTime.now());
+  }
+
+  Widget _buildCancelButton(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => _confirmCancel(context),
+        icon: const Icon(Icons.cancel_outlined, color: Colors.red),
+        label: const Text(
+          "CANCELAR RESERVA",
+          style: TextStyle(
+            color: Colors.red,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          side: const BorderSide(color: Colors.red, width: 1.5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmCancel(BuildContext context) async {
+    final motivoCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("¿Cancelar reserva?"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Esta acción no se puede deshacer. ¿Por qué la cancelas?",
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: motivoCtrl,
+              decoration: const InputDecoration(
+                labelText: "Motivo (opcional)",
+                border: OutlineInputBorder(),
+              ),
+              maxLength: 200,
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Volver"),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Sí, cancelar"),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true || !context.mounted) return;
+
+    final provider = context.read<AppProvider>();
+    final success = await provider.cancelarReserva(
+      reservaId: reservation['id'].toString(),
+      motivo: motivoCtrl.text.trim(),
+    );
+
+    if (!context.mounted) return;
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Reserva cancelada"),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pop(context); // volver al listado
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(provider.errorMessage ?? "No se pudo cancelar"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildRegistrationButtons(BuildContext context) {
