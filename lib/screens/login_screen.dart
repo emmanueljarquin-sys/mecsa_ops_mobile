@@ -2,9 +2,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_provider.dart';
+import '../services/mfa_service.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
+import 'mfa_challenge_screen.dart';
+import 'mfa_enroll_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -641,9 +645,30 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (success) {
       if (_isLogin) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+        // Evalúa qué pantalla mostrar según estado MFA
+        final mfa = MfaService(Supabase.instance.client);
+        final next = await mfa.evaluateAfterLogin();
+        if (!mounted) return;
+
+        switch (next) {
+          case MfaNextStep.challenge:
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const MfaChallengeScreen()),
+            );
+            break;
+          case MfaNextStep.enrollForced:
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                  builder: (_) => const MfaEnrollScreen(forced: true)),
+            );
+            break;
+          case MfaNextStep.enrollOptional:
+          case MfaNextStep.ready:
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+            );
+            break;
+        }
       } else {
         setState(() => _isLogin = true);
         ScaffoldMessenger.of(context).showSnackBar(
