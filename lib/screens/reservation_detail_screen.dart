@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../widgets/correccion_widgets.dart';
 import 'vehicle_register_screen.dart';
 import 'trip_nav_screen.dart';
 
@@ -576,6 +577,84 @@ class ReservationDetailScreen extends StatelessWidget {
                       fontSize: 14,
                     ),
                   ),
+                ),
+                // Banners de solicitud ya enviada (si aplica)
+                if ((regSalida['solicitud_correccion'] ?? '').toString().isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  CorreccionBanner(
+                    motivo: "SALIDA: ${regSalida['solicitud_correccion']}",
+                    fecha: regSalida['fecha_correccion']?.toString().split('.').first,
+                    respuestaAdmin: regSalida['respuesta_admin'],
+                  ),
+                ],
+                if ((regEntrada['solicitud_correccion'] ?? '').toString().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  CorreccionBanner(
+                    motivo: "ENTRADA: ${regEntrada['solicitud_correccion']}",
+                    fecha: regEntrada['fecha_correccion']?.toString().split('.').first,
+                    respuestaAdmin: regEntrada['respuesta_admin'],
+                  ),
+                ],
+                // Botones Solicitar corrección (uno por registro, solo si no hay ya solicitud)
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    if ((regSalida['solicitud_correccion'] ?? '').toString().isEmpty)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.edit_note, size: 18, color: Colors.orange),
+                          label: const Text(
+                            "Corregir salida",
+                            style: TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.orange, width: 1.2),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          onPressed: () async {
+                            final ok = await showSolicitarCorreccionDialog(
+                              context,
+                              schema: 'flotilla',
+                              table: 'registros_vehiculos',
+                              recordId: regSalida['id'].toString(),
+                              titulo: 'Corregir kilometraje de salida',
+                            );
+                            if (ok && context.mounted) {
+                              (context as Element).markNeedsBuild();
+                            }
+                          },
+                        ),
+                      ),
+                    if ((regSalida['solicitud_correccion'] ?? '').toString().isEmpty &&
+                        (regEntrada['solicitud_correccion'] ?? '').toString().isEmpty)
+                      const SizedBox(width: 8),
+                    if ((regEntrada['solicitud_correccion'] ?? '').toString().isEmpty)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.edit_note, size: 18, color: Colors.orange),
+                          label: const Text(
+                            "Corregir entrada",
+                            style: TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.orange, width: 1.2),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          onPressed: () async {
+                            final ok = await showSolicitarCorreccionDialog(
+                              context,
+                              schema: 'flotilla',
+                              table: 'registros_vehiculos',
+                              recordId: regEntrada['id'].toString(),
+                              titulo: 'Corregir kilometraje de entrada',
+                            );
+                            if (ok && context.mounted) {
+                              (context as Element).markNeedsBuild();
+                            }
+                          },
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),

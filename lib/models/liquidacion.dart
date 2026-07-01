@@ -14,6 +14,9 @@ class Liquidacion {
   final DateTime createdAt;
   final List<Factura>? facturas;
   final Map<String, double>? totales;
+  final String? solicitudCorreccion;
+  final DateTime? fechaCorreccion;
+  final String? respuestaAdmin;
 
   Liquidacion({
     required this.id,
@@ -31,6 +34,9 @@ class Liquidacion {
     required this.createdAt,
     this.facturas,
     this.totales,
+    this.solicitudCorreccion,
+    this.fechaCorreccion,
+    this.respuestaAdmin,
   });
 
   factory Liquidacion.fromJson(Map<String, dynamic> json) {
@@ -56,6 +62,11 @@ class Liquidacion {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
+      solicitudCorreccion: json['solicitud_correccion'],
+      fechaCorreccion: json['fecha_correccion'] != null
+          ? DateTime.tryParse(json['fecha_correccion'].toString())
+          : null,
+      respuestaAdmin: json['respuesta_admin'],
       facturas: json['facturas'] != null
           ? (json['facturas'] as List).map((f) => Factura.fromJson(f)).toList()
           : null,

@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/liquidacion.dart';
 import '../services/liquidaciones_service.dart';
+import '../widgets/correccion_widgets.dart';
 
 class LiquidacionDetailScreen extends StatefulWidget {
   final String liquidacionId;
@@ -96,14 +97,35 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
         title: const Text('Detalle de Liquidación'),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
-        actions: liquidacion != null && liquidacion!.estado == 'pendiente'
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.delete),
-                  onPressed: _deleteLiquidacion,
-                ),
-              ]
-            : null,
+        actions: liquidacion == null
+            ? null
+            : [
+                if (liquidacion!.estado == 'pendiente')
+                  IconButton(
+                    icon: const Icon(Icons.delete),
+                    tooltip: 'Eliminar',
+                    onPressed: _deleteLiquidacion,
+                  ),
+                // Botón "Solicitar corrección" solo si NO está pendiente
+                // (aún editable) y NO tiene ya una solicitud abierta
+                if (liquidacion!.estado != 'pendiente' &&
+                    (liquidacion!.solicitudCorreccion == null ||
+                        liquidacion!.solicitudCorreccion!.isEmpty))
+                  IconButton(
+                    icon: const Icon(Icons.edit_note),
+                    tooltip: 'Solicitar corrección',
+                    onPressed: () async {
+                      final ok = await showSolicitarCorreccionDialog(
+                        context,
+                        schema: 'viaticos',
+                        table: 'liquidaciones',
+                        recordId: liquidacion!.id,
+                        titulo: 'Solicitar corrección de liquidación',
+                      );
+                      if (ok && mounted) _loadDetail();
+                    },
+                  ),
+              ],
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -128,6 +150,19 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Banner de corrección (si aplica)
+                  if (liquidacion != null &&
+                      liquidacion!.solicitudCorreccion != null &&
+                      liquidacion!.solicitudCorreccion!.isNotEmpty)
+                    CorreccionBanner(
+                      motivo: liquidacion!.solicitudCorreccion!,
+                      fecha: liquidacion!.fechaCorreccion
+                          ?.toLocal()
+                          .toString()
+                          .split('.')
+                          .first,
+                      respuestaAdmin: liquidacion!.respuestaAdmin,
+                    ),
                   // Información General
                   _SectionCard(
                     title: 'Información General',

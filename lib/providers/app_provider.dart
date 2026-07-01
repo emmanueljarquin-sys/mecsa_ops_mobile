@@ -1141,6 +1141,69 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  /// Solicita una corrección sobre un registro ya guardado (viáticos o kilometraje).
+  ///
+  /// El empleado NO puede editar directamente el registro; solo puede escribir
+  /// qué necesita corregirse. El registro cambia de estado y el admin lo revisa
+  /// en la web. Aplica a:
+  ///   - schema='viaticos' + table='liquidaciones'
+  ///   - schema='flotilla' + table='registros_vehiculos'
+  Future<bool> solicitarCorreccion({
+    required String schema,
+    required String table,
+    required String recordId,
+    required String motivo,
+  }) async {
+    try {
+      isLoading = true;
+      errorMessage = null;
+      notifyListeners();
+
+      final texto = motivo.trim();
+      if (texto.isEmpty) {
+        throw "Debes escribir qué necesita corregirse";
+      }
+      if (texto.length < 8) {
+        throw "El motivo es muy corto (mínimo 8 caracteres)";
+      }
+
+      // Verificar el registro existe y no tiene ya solicitud activa
+      final r = await _supabase
+          .schema(schema)
+          .from(table)
+          .select('id, estado, solicitud_correccion, empleado_id')
+          .eq('id', recordId)
+          .maybeSingle();
+      if (r == null) throw "Registro no encontrado";
+
+      final estadoActual = (r['estado'] ?? '').toString();
+      if (estadoActual.toLowerCase().contains('correccion solicitada') ||
+          estadoActual.toLowerCase().contains('en revisi')) {
+        throw "Ya hay una solicitud de corrección pendiente para este registro";
+      }
+      if (r['empleado_id'] != null &&
+          currentEmployeeId != null &&
+          r['empleado_id'] != currentEmployeeId) {
+        throw "Solo el propietario del registro puede solicitar corrección";
+      }
+
+      await _supabase.schema(schema).from(table).update({
+        'solicitud_correccion': texto,
+        'fecha_correccion': DateTime.now().toUtc().toIso8601String(),
+        'estado': 'Correccion Solicitada',
+      }).eq('id', recordId);
+
+      return true;
+    } catch (e) {
+      debugPrint("Error solicitando corrección: $e");
+      errorMessage = e.toString();
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> saveVehicleRegister({
     required String reservaId,
     required String tipo,
