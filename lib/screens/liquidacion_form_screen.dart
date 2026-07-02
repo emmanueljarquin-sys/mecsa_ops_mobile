@@ -19,6 +19,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _tarjetaController = TextEditingController();
   final _personalController = TextEditingController();
+  final _descripcionController = TextEditingController();
 
   String? _selectedEmpleadoId;
   int? _selectedProyectoId;
@@ -507,6 +508,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
           _selectedProyectoId = widget.liquidacion!.proyectoId;
           _tarjetaController.text = widget.liquidacion!.tarjetaUlt4 ?? '';
           _personalController.text = widget.liquidacion!.personalIncluido ?? '';
+          _descripcionController.text = widget.liquidacion!.descripcion ?? '';
           _selectedDate = widget.liquidacion!.fecha;
           _selectedTipo = widget.liquidacion!.tipo;
           _facturas = widget.liquidacion!.facturas ?? [];
@@ -614,6 +616,9 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
         estado: 'pendiente',
         total: _calculateTotal(),
         createdAt: DateTime.now(),
+        descripcion: _descripcionController.text.trim().isEmpty
+            ? null
+            : _descripcionController.text.trim(),
       );
 
       Liquidacion savedLiquidacion;
@@ -772,6 +777,38 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                                 );
                               },
                             ),
+                          ),
+                          const SizedBox(height: 16),
+                          // Descripción — obligatoria cuando no hay proyecto
+                          TextFormField(
+                            controller: _descripcionController,
+                            maxLines: 3,
+                            minLines: 2,
+                            maxLength: 500,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: InputDecoration(
+                              labelText: _selectedProyectoId == null
+                                  ? 'Descripción del viático *'
+                                  : 'Descripción (opcional)',
+                              hintText: _selectedProyectoId == null
+                                  ? 'Explica qué se hizo (mínimo 15 caracteres)'
+                                  : null,
+                              border: const OutlineInputBorder(),
+                              alignLabelWithHint: true,
+                              helperText: _selectedProyectoId == null
+                                  ? 'Requerido cuando no se selecciona proyecto'
+                                  : null,
+                              helperStyle: const TextStyle(color: Colors.orange),
+                            ),
+                            validator: (v) {
+                              if (_selectedProyectoId == null) {
+                                final t = (v ?? '').trim();
+                                if (t.isEmpty) return 'Debes describir el viático o seleccionar un proyecto';
+                                if (t.length < 15) return 'Mínimo 15 caracteres (llevas ${t.length})';
+                              }
+                              return null;
+                            },
+                            onChanged: (_) => setState(() {}),
                           ),
                           const SizedBox(height: 16),
                           InkWell(
