@@ -149,7 +149,18 @@ class LiquidacionesService {
       
       final Map<String, dynamic> data = Map<String, dynamic>.from(res);
       data['facturas'] = facturasRes;
-      
+
+      // Calcular resumen de totales agrupando facturas por tipo.
+      // Antes lo calculaba el endpoint PHP get_liquidacion_detail.php;
+      // al migrar a Supabase directo se perdió y el detalle mostraba ₡0.
+      final Map<String, double> totales = {};
+      for (final f in (facturasRes as List)) {
+        final tipo = (f['tipo'] ?? 'OTROS').toString();
+        final monto = (f['monto'] as num?)?.toDouble() ?? 0.0;
+        totales[tipo] = (totales[tipo] ?? 0) + monto;
+      }
+      data['totales'] = totales;
+
       // Hidratar con datos de empleado (public)
       final empRes = await supabase
           .from('Empleados')
@@ -196,7 +207,16 @@ class LiquidacionesService {
           throw Exception(result['error'] ?? 'Error desconocido en el servidor');
         }
       } else {
-        throw Exception('Error al conectar con el servidor: ${response.statusCode}');
+        // El servidor devuelve el motivo real en el body (ej. "descripción
+        // obligatoria sin proyecto"). Mostrarlo en vez del código pelado.
+        String msg = 'Error al conectar con el servidor: ${response.statusCode}';
+        try {
+          final err = jsonDecode(response.body);
+          if (err is Map && err['error'] != null) {
+            msg = err['error'].toString();
+          }
+        } catch (_) {}
+        throw Exception(msg);
       }
     } catch (e) {
       print('DEBUG: ERROR en createLiquidacion vía API PHP: $e');
@@ -322,19 +342,28 @@ class LiquidacionesService {
   static Future<List<Proyecto>> getProyectos() async {
     try {
       final supabase = Supabase.instance.client;
-      final res = await supabase
-          .schema('proyectos')
-          .from('projects')
-          .select('project_id, title')
-          .order('title');
-      
-      return (res as List).map((p) {
-        // Mapear 'project_id' a 'id' y 'title' a 'nombre' para el modelo Proyecto
-        return Proyecto(
-          id: p['project_id'],
-          nombre: p['title'] ?? 'Sin nombre',
-        );
-      }).toList();
+      // PostgREST limita cada request a 1000 filas. Con 2600+ proyectos,
+      // una sola consulta dejaba fuera a los más nuevos (ej. 2648).
+      // Paginamos con range() hasta traerlos todos.
+      const pageSize = 1000;
+      final List<Proyecto> all = [];
+      int from = 0;
+      while (true) {
+        final res = await supabase
+            .schema('proyectos')
+            .from('projects')
+            .select('project_id, title')
+            .order('project_id', ascending: false) // más recientes primero
+            .range(from, from + pageSize - 1);
+        final list = res as List;
+        all.addAll(list.map((p) => Proyecto(
+              id: p['project_id'],
+              nombre: p['title'] ?? 'Sin nombre',
+            )));
+        if (list.length < pageSize) break;
+        from += pageSize;
+      }
+      return all;
     } catch (e) {
       print('DEBUG: ERROR cargando proyectos vía Supabase: $e');
       return [];
