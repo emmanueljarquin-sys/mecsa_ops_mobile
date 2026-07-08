@@ -978,23 +978,43 @@ class AppProvider extends ChangeNotifier {
       // Antes de permitir la reserva, aplicar bloqueo si corresponde
       // y luego validar el flag. Esto auto-bloquea a quien acumuló 3+
       // reservas vencidas sin registro y rechaza la nueva reserva.
+      //
+      // IMPORTANTE: si un admin desbloqueó manualmente al empleado, se le
+      // pone la etiqueta 'RESERVAS_EXCEPCION' en sistemas_acceso. En ese
+      // caso NO reejecutamos el RPC (que volvería a bloquearlo por las
+      // reservas viejas sin registrar). Sin este chequeo, desbloquear desde
+      // la web no tenía efecto porque el mobile re-bloqueaba al instante.
       try {
-        await _supabase
-            .schema('flotilla')
-            .rpc('aplicar_bloqueo_si_corresponde',
-                params: {'p_empleado_id': currentEmployeeId});
-
+        // Leer flag actual + sistemas_acceso en una sola consulta
         final empCheck = await _supabase
             .from('Empleados')
-            .select('reservas_bloqueado')
+            .select('reservas_bloqueado, sistemas_acceso')
             .eq('id', currentEmployeeId as Object)
             .maybeSingle();
 
-        if (empCheck != null && empCheck['reservas_bloqueado'] == true) {
-          throw "Tu cuenta está bloqueada para hacer reservas. "
-              "Acumulaste 3 o más reservas sin registrar salida. "
-              "Contacta al administrador para desbloquear.";
+        final List sistemas = (empCheck?['sistemas_acceso'] as List?) ?? [];
+        final bool tieneExcepcion = sistemas.contains('RESERVAS_EXCEPCION');
+
+        if (!tieneExcepcion) {
+          // Solo re-evaluar strikes si NO tiene excepción manual del admin
+          await _supabase
+              .schema('flotilla')
+              .rpc('aplicar_bloqueo_si_corresponde',
+                  params: {'p_empleado_id': currentEmployeeId});
+
+          final recheck = await _supabase
+              .from('Empleados')
+              .select('reservas_bloqueado')
+              .eq('id', currentEmployeeId as Object)
+              .maybeSingle();
+
+          if (recheck != null && recheck['reservas_bloqueado'] == true) {
+            throw "Tu cuenta está bloqueada para hacer reservas. "
+                "Acumulaste 3 o más reservas sin registrar salida. "
+                "Contacta al administrador para desbloquear.";
+          }
         }
+        // Si tiene excepción, se le permite reservar sin re-evaluar.
       } catch (e) {
         if (e is String) rethrow;
         // Si la RPC falla por permisos u otra razón, no bloqueamos
