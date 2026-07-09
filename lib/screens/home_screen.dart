@@ -11,6 +11,7 @@ import 'visitas_screen.dart';
 import 'visita_detail_screen.dart';
 import 'profile_screen.dart';
 import 'live_map_screen.dart';
+import 'admin/admin_hub_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -310,6 +311,19 @@ class DashboardTab extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
+                // Botón Administración (solo para usuarios con acceso web)
+                if (provider.isWebAdmin) ...[
+                  IconButton(
+                    tooltip: 'Administración',
+                    icon: Icon(Icons.admin_panel_settings,
+                        size: 26, color: Theme.of(context).primaryColor),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AdminHubScreen()),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 Stack(
                   children: [
                     const Icon(

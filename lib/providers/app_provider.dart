@@ -41,6 +41,27 @@ class AppProvider extends ChangeNotifier {
   Map<String, dynamic>?
   currentEmployeeData; // Nuevo: Datos completos del perfil
 
+  // ── Flags de acceso administrativo ─────────────────────────────
+  // El "modo Administración" en la app se muestra a quien tenga acceso
+  // a la web (OPS en sistemas_acceso). Dentro, cada acción respeta las
+  // reglas de rol que ya valida el servidor.
+  bool _isWebAdmin = false;          // ve la sección Administración
+  bool _isRoleAdmin = false;         // rol Administrador/SuperAdmin/admin
+  bool _isContabilidad = false;      // rol Contabilidad
+  bool _isResponsable = false;       // responsable de ≥1 departamento
+
+  bool get isWebAdmin => _isWebAdmin;
+  bool get isRoleAdmin => _isRoleAdmin;
+  bool get isContabilidad => _isContabilidad;
+  bool get isResponsable => _isResponsable;
+  // Puede aprobar liquidaciones: admin, contabilidad o responsable
+  bool get canApproveLiquidaciones => _isRoleAdmin || _isContabilidad || _isResponsable;
+  // Puede aprobar reservas: admin (o quien tenga permiso de flotilla — el
+  // servidor valida por rol_permisos)
+  bool get canApproveReservas => _isRoleAdmin;
+  // Puede procesar correcciones / desbloquear: solo admin
+  bool get canManageAdmin => _isRoleAdmin;
+
   RealtimeChannel? _liquidacionesChannel;
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
@@ -79,9 +100,36 @@ class AppProvider extends ChangeNotifier {
         }
         currentEmployeeId = res['id'].toString();
         currentEmployeeData = res;
+
+        // ── Calcular flags administrativos ──
+        final rol = (res['rol'] ?? '').toString().toLowerCase().trim();
+        _isRoleAdmin = ['administrador', 'admin', 'superadmin', 'superadministrador']
+            .contains(rol);
+        _isContabilidad = rol == 'contabilidad';
+
+        final List sistemas = (res['sistemas_acceso'] as List?) ?? [];
+        // Acceso a la web = tiene OPS entre sus sistemas
+        _isWebAdmin = sistemas.contains('OPS') || _isRoleAdmin;
+
+        // ¿Es responsable de algún departamento de viáticos?
+        try {
+          final resp = await _supabase
+              .from('viaticos_responsables_departamento')
+              .select('id')
+              .eq('empleado_id', currentEmployeeId as Object)
+              .limit(1);
+          _isResponsable = (resp as List).isNotEmpty;
+        } catch (_) {
+          _isResponsable = false;
+        }
+
         notifyListeners();
       } else {
         // No employee found, currentEmployeeId remains null
+        _isWebAdmin = false;
+        _isRoleAdmin = false;
+        _isContabilidad = false;
+        _isResponsable = false;
       }
     } catch (e) {
       debugPrint("Error fetching employee ID: $e");
