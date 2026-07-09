@@ -60,27 +60,54 @@ class AdminService {
           .order('created_at', ascending: false);
     }
 
-    // Hidratar nombre de empleado y proyecto
+    if (rows.isEmpty) return [];
+
+    // Hidratación en LOTE (antes eran 2 consultas por fila → N+1 lento).
+    // Recolectamos todos los ids y hacemos 2 consultas totales.
+    final empIds = rows
+        .map((r) => r['empleado_id'])
+        .where((v) => v != null)
+        .toSet()
+        .toList();
+    final proyIds = rows
+        .map((r) => r['proyecto_id'])
+        .where((v) => v != null)
+        .toSet()
+        .toList();
+
+    final Map<String, Map<String, dynamic>> empMap = {};
+    if (empIds.isNotEmpty) {
+      final emps = await _sb
+          .from('Empleados')
+          .select('id, nombre, apellido')
+          .inFilter('id', empIds);
+      for (final e in emps as List) {
+        empMap[e['id'].toString()] = {'nombre': e['nombre'], 'apellido': e['apellido']};
+      }
+    }
+
+    final Map<String, String> proyMap = {};
+    if (proyIds.isNotEmpty) {
+      final proys = await _sb
+          .schema('proyectos')
+          .from('projects')
+          .select('project_id, title')
+          .inFilter('project_id', proyIds);
+      for (final p in proys as List) {
+        proyMap[p['project_id'].toString()] = (p['title'] ?? '').toString();
+      }
+    }
+
     final List<Liquidacion> result = [];
     for (final r in rows) {
       final data = Map<String, dynamic>.from(r);
-      final empId = data['empleado_id'];
-      if (empId != null) {
-        final emp = await _sb
-            .from('Empleados')
-            .select('nombre, apellido')
-            .eq('id', empId)
-            .maybeSingle();
-        if (emp != null) data['empleado'] = emp;
+      final empId = data['empleado_id']?.toString();
+      if (empId != null && empMap.containsKey(empId)) {
+        data['empleado'] = empMap[empId];
       }
-      if (data['proyecto_id'] != null) {
-        final proy = await _sb
-            .schema('proyectos')
-            .from('projects')
-            .select('title')
-            .eq('project_id', data['proyecto_id'])
-            .maybeSingle();
-        if (proy != null) data['proyecto'] = {'nombre': proy['title']};
+      final proyId = data['proyecto_id']?.toString();
+      if (proyId != null && proyMap.containsKey(proyId)) {
+        data['proyecto'] = {'nombre': proyMap[proyId]};
       }
       result.add(Liquidacion.fromJson(data));
     }
@@ -121,28 +148,39 @@ class AdminService {
         .eq('estado', 'Pendiente')
         .order('fecha_salida', ascending: true);
 
+    final list = rows as List;
+    if (list.isEmpty) return [];
+
+    // Hidratación en lote (2 consultas totales en vez de N+1)
+    final vehIds = list.map((r) => r['vehiculo_id']).where((v) => v != null).toSet().toList();
+    final empIds = list.map((r) => r['empleado_id']).where((v) => v != null).toSet().toList();
+
+    final Map<String, Map<String, dynamic>> vehMap = {};
+    if (vehIds.isNotEmpty) {
+      final vs = await _sb
+          .schema('flotilla')
+          .from('vehiculos')
+          .select('id, marca, modelo, placa')
+          .inFilter('id', vehIds);
+      for (final v in vs as List) {
+        vehMap[v['id'].toString()] = {'marca': v['marca'], 'modelo': v['modelo'], 'placa': v['placa']};
+      }
+    }
+    final Map<String, Map<String, dynamic>> empMap = {};
+    if (empIds.isNotEmpty) {
+      final es = await _sb.from('Empleados').select('id, nombre, apellido').inFilter('id', empIds);
+      for (final e in es as List) {
+        empMap[e['id'].toString()] = {'nombre': e['nombre'], 'apellido': e['apellido']};
+      }
+    }
+
     final List<Map<String, dynamic>> result = [];
-    for (final r in rows as List) {
+    for (final r in list) {
       final data = Map<String, dynamic>.from(r);
-      // Hidratar vehículo
-      if (data['vehiculo_id'] != null) {
-        final v = await _sb
-            .schema('flotilla')
-            .from('vehiculos')
-            .select('marca, modelo, placa')
-            .eq('id', data['vehiculo_id'])
-            .maybeSingle();
-        if (v != null) data['vehiculo'] = v;
-      }
-      // Hidratar empleado
-      if (data['empleado_id'] != null) {
-        final e = await _sb
-            .from('Empleados')
-            .select('nombre, apellido')
-            .eq('id', data['empleado_id'])
-            .maybeSingle();
-        if (e != null) data['empleado'] = e;
-      }
+      final vId = data['vehiculo_id']?.toString();
+      if (vId != null && vehMap.containsKey(vId)) data['vehiculo'] = vehMap[vId];
+      final eId = data['empleado_id']?.toString();
+      if (eId != null && empMap.containsKey(eId)) data['empleado'] = empMap[eId];
       result.add(data);
     }
     return result;
@@ -201,15 +239,18 @@ class AdminService {
       out.add(d);
     }
 
-    // Hidratar nombre empleado
-    for (final d in out) {
-      if (d['empleado_id'] != null) {
-        final e = await _sb
-            .from('Empleados')
-            .select('nombre, apellido')
-            .eq('id', d['empleado_id'])
-            .maybeSingle();
-        if (e != null) d['_empleado'] = '${e['nombre']} ${e['apellido'] ?? ''}'.trim();
+    if (out.isEmpty) return out;
+    // Hidratar nombre empleado en lote
+    final empIds = out.map((d) => d['empleado_id']).where((v) => v != null).toSet().toList();
+    if (empIds.isNotEmpty) {
+      final es = await _sb.from('Empleados').select('id, nombre, apellido').inFilter('id', empIds);
+      final Map<String, String> nameMap = {};
+      for (final e in es as List) {
+        nameMap[e['id'].toString()] = '${e['nombre']} ${e['apellido'] ?? ''}'.trim();
+      }
+      for (final d in out) {
+        final id = d['empleado_id']?.toString();
+        if (id != null && nameMap.containsKey(id)) d['_empleado'] = nameMap[id];
       }
     }
     return out;
