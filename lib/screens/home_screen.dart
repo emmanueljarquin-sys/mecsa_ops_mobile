@@ -203,7 +203,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       }
                     },
                     child: const Text(
-                      "DESCARGAR E INSTALAR",
+                      "ACTUALIZAR EN PLAY STORE",
                       style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
                     ),
                   ),
