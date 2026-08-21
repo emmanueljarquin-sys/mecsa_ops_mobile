@@ -1,8 +1,8 @@
 // =============================================================================
 // admin_hub_screen.dart
-// Menú principal del modo Administración. Solo visible para quien tenga
-// acceso a la web (AppProvider.isWebAdmin). Cada tarjeta abre una función.
-// Las tarjetas se muestran según los permisos del usuario.
+// Menú principal del modo Administración. Se muestra a quien tenga al menos
+// una función administrativa (AppProvider.hasAdminAccess). Cada tarjeta se
+// muestra según el permiso del rol (rol_permisos), igual que Auditorías.
 // =============================================================================
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -42,7 +42,7 @@ class AdminHubScreen extends StatelessWidget {
             MaterialPageRoute(builder: (_) => const AprobarReservasScreen())),
       ));
     }
-    if (p.canManageAdmin) {
+    if (p.canProcesarCorrecciones) {
       cards.add(_AdminCard(
         icon: Icons.edit_note,
         color: Colors.orange,
@@ -51,6 +51,8 @@ class AdminHubScreen extends StatelessWidget {
         onTap: () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => const CorreccionesScreen())),
       ));
+    }
+    if (p.canDesbloquear) {
       cards.add(_AdminCard(
         icon: Icons.lock_open,
         color: Colors.red,

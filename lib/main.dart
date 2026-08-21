@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'theme/app_theme.dart';
 import 'providers/app_provider.dart';
+import 'services/offline_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 
@@ -35,6 +36,13 @@ void main() async {
     print("Firebase initialization failed: $e");
   }
 
+  // Cola de sincronización offline (no bloquear el arranque si falla)
+  try {
+    await OfflineService.instance.init();
+  } catch (e) {
+    print("OfflineService init failed: $e");
+  }
+
   runApp(MecsaOpsApp(firebaseAvailable: firebaseAvailable));
 }
 
@@ -48,7 +56,10 @@ class MecsaOpsApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(
           create: (_) => AppProvider(firebaseAvailable: firebaseAvailable),
-        )
+        ),
+        ChangeNotifierProvider<OfflineService>.value(
+          value: OfflineService.instance,
+        ),
       ],
       child: MaterialApp(
         title: 'MecsaOPS Mobile',

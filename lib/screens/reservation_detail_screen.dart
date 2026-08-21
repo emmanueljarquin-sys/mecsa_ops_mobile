@@ -176,6 +176,26 @@ class ReservationDetailScreen extends StatelessWidget {
                     color: Colors.green,
                   ),
 
+                  // Horas de control (para el colaborador que hizo la reserva)
+                  if (reservation['created_at'] != null) ...[
+                    const SizedBox(height: 12),
+                    _buildInfoRow(
+                      Icons.event_available,
+                      "Reservada el",
+                      _formatDate(reservation['created_at']?.toString()),
+                      color: Colors.indigo,
+                    ),
+                  ],
+                  if (reservation['fecha_aprobacion'] != null) ...[
+                    const SizedBox(height: 12),
+                    _buildInfoRow(
+                      Icons.verified,
+                      "Aprobada el",
+                      _formatDate(reservation['fecha_aprobacion']?.toString()),
+                      color: Colors.teal,
+                    ),
+                  ],
+
                   const SizedBox(height: 30),
 
                   // Location

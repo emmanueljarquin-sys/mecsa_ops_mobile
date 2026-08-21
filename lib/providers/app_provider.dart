@@ -50,17 +50,42 @@ class AppProvider extends ChangeNotifier {
   bool _isContabilidad = false;      // rol Contabilidad
   bool _isResponsable = false;       // responsable de ≥1 departamento
 
+  // Vistas/módulos permitidos según rol_permisos (por ROL, igual que la web).
+  Set<String> _allowedViews = {};
+  // Permisos POR PERSONA (tokens en Empleados.sistemas_acceso, en MAYÚSCULA).
+  List<String> _sistemas = [];
+
   bool get isWebAdmin => _isWebAdmin;
   bool get isRoleAdmin => _isRoleAdmin;
   bool get isContabilidad => _isContabilidad;
   bool get isResponsable => _isResponsable;
-  // Puede aprobar liquidaciones: admin, contabilidad o responsable
-  bool get canApproveLiquidaciones => _isRoleAdmin || _isContabilidad || _isResponsable;
-  // Puede aprobar reservas: admin (o quien tenga permiso de flotilla — el
-  // servidor valida por rol_permisos)
-  bool get canApproveReservas => _isRoleAdmin;
-  // Puede procesar correcciones / desbloquear: solo admin
-  bool get canManageAdmin => _isRoleAdmin;
+
+  /// ¿El usuario puede ver un módulo?
+  /// - Admin (Administrador/SuperAdmin) ve todo.
+  /// - Por ROL: si rol_permisos del rol tiene el slug (página Roles).
+  /// - Por PERSONA: si sistemas_acceso tiene el token (slug en MAYÚSCULA, página Usuarios).
+  bool canViewModule(String slug) =>
+      _isRoleAdmin ||
+      _allowedViews.contains(slug) ||
+      _sistemas.contains(slug.toUpperCase());
+
+  /// Módulo de Auditorías de Vehículos (permiso 'auditorias' en rol_permisos).
+  bool get canAudit => canViewModule('auditorias');
+
+  // ── Funciones del modo Administración ───────────────────────────────────
+  // Admin (Administrador/SuperAdmin) ve todo. El resto solo si tiene el
+  // permiso configurado por rol en la web (rol_permisos), igual que Auditorías.
+  // Excepción: liquidaciones también las ven contabilidad y responsables
+  // (los responsables solo las de su departamento — lo valida el servidor).
+  bool get canApproveLiquidaciones =>
+      _isRoleAdmin || _isContabilidad || _isResponsable || _allowedViews.contains('aprobar_liquidaciones');
+  bool get canApproveReservas => canViewModule('aprobar_reservas');
+  bool get canProcesarCorrecciones => canViewModule('procesar_correcciones');
+  bool get canDesbloquear => canViewModule('desbloquear_reservas');
+
+  /// ¿Tiene al menos una función administrativa? (para mostrar el botón).
+  bool get hasAdminAccess =>
+      canApproveLiquidaciones || canApproveReservas || canProcesarCorrecciones || canDesbloquear;
 
   RealtimeChannel? _liquidacionesChannel;
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
@@ -108,6 +133,8 @@ class AppProvider extends ChangeNotifier {
         _isContabilidad = rol == 'contabilidad';
 
         final List sistemas = (res['sistemas_acceso'] as List?) ?? [];
+        // Permisos POR PERSONA (tokens en sistemas_acceso, ej. 'AUDITORIAS').
+        _sistemas = sistemas.map((e) => e.toString().toUpperCase()).toList();
         // Acceso a la web = tiene OPS entre sus sistemas
         _isWebAdmin = sistemas.contains('OPS') || _isRoleAdmin;
 
@@ -123,6 +150,25 @@ class AppProvider extends ChangeNotifier {
           _isResponsable = false;
         }
 
+        // Permisos por módulo del rol (mismo origen que la web: rol_permisos).
+        try {
+          final rolName = (res['rol'] ?? '').toString();
+          if (rolName.isNotEmpty) {
+            final perms = await _supabase
+                .from('rol_permisos')
+                .select('vista_slug, puede_ver')
+                .eq('rol_nombre', rolName);
+            _allowedViews = {
+              for (final p in perms as List)
+                if (p['puede_ver'] == true) p['vista_slug'].toString()
+            };
+          } else {
+            _allowedViews = {};
+          }
+        } catch (_) {
+          _allowedViews = {};
+        }
+
         notifyListeners();
       } else {
         // No employee found, currentEmployeeId remains null
@@ -130,6 +176,8 @@ class AppProvider extends ChangeNotifier {
         _isRoleAdmin = false;
         _isContabilidad = false;
         _isResponsable = false;
+        _allowedViews = {};
+        _sistemas = [];
       }
     } catch (e) {
       debugPrint("Error fetching employee ID: $e");
@@ -509,6 +557,23 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  /// Refresco SILENCIOSO (sin spinner de pantalla completa). Se llama al volver
+  /// la app a primer plano para reflejar cambios hechos desde la web —p.ej. una
+  /// reserva que ya fue aprobada— sin interrumpir lo que el usuario está viendo.
+  Future<void> refreshSilent() async {
+    if (user == null || currentEmployeeId == null) return;
+    try {
+      await Future.wait([
+        _fetchMyReservations(),
+        _fetchViaticos(),
+        _fetchRutas(),
+      ]);
+      notifyListeners();
+    } catch (e) {
+      debugPrint("refreshSilent error: $e");
+    }
+  }
+
   Future<void> _fetchMyReservations() async {
     try {
       if (currentEmployeeId == null) return;
@@ -524,7 +589,13 @@ class AppProvider extends ChangeNotifier {
           .eq('empleado_id', currentEmployeeId!)
           .order('fecha_salida', ascending: true);
 
-      myReservations = List<Map<String, dynamic>>.from(res);
+      final now = DateTime.now();
+      myReservations = List<Map<String, dynamic>>.from(res)
+          .where((r) {
+            final fechaRegreso = DateTime.tryParse(r['fecha_regreso'] ?? '');
+            return fechaRegreso == null || fechaRegreso.isAfter(now);
+          })
+          .toList();
 
       // Post-process to ensure clean structure similar to vehicle list if needed
       // but simpler to just pass raw Map to UI.
@@ -538,7 +609,13 @@ class AppProvider extends ChangeNotifier {
             .select()
             .eq('empleado_id', currentEmployeeId!)
             .order('fecha_salida', ascending: true);
-        myReservations = List<Map<String, dynamic>>.from(res);
+        final now = DateTime.now();
+        myReservations = List<Map<String, dynamic>>.from(res)
+            .where((r) {
+              final fechaRegreso = DateTime.tryParse(r['fecha_regreso'] ?? '');
+              return fechaRegreso == null || fechaRegreso.isAfter(now);
+            })
+            .toList();
       } catch (e2) {
         print("Fallback failed: $e2");
       }
@@ -1347,7 +1424,8 @@ class AppProvider extends ChangeNotifier {
       await _supabase
           .schema('flotilla')
           .from('registros_vehiculos')
-          .insert(data);
+          .insert(data)
+          .timeout(const Duration(seconds: 30));
 
       // Refresh data
       await fetchData();
@@ -1355,6 +1433,65 @@ class AppProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint("Error saving vehicle register: $e");
       errorMessage = "Error al guardar registro: $e";
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Registro MANUAL de respaldo: cuando el registro normal falla o se cuelga,
+  /// el empleado envía un comentario + las fotos que pudo. Queda 'Pendiente' de
+  /// aprobación en la web. Best-effort: si una foto no sube, igual se envía.
+  Future<bool> saveVehicleRegisterManual({
+    required String reservaId,
+    required String tipo,
+    required String comentario,
+    required Map<String, dynamic> localPhotos,
+    double? kilometraje,
+  }) async {
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      if (user == null) throw "No autenticado";
+      if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
+      if (currentEmployeeId == null) throw "No se encontró el ID de empleado";
+
+      // Subir las fotos que se pueda (sin abortar si alguna falla)
+      final Map<String, String> photoUrls = {};
+      for (final entry in localPhotos.entries) {
+        if (entry.value == null) continue;
+        try {
+          final url = await _uploadRegisterPhoto(entry.value, entry.key, reservaId);
+          if (url != null) photoUrls["foto_${entry.key}"] = url;
+        } catch (e) {
+          debugPrint("Foto ${entry.key} no subió (registro manual, continúo): $e");
+        }
+      }
+
+      final Map<String, dynamic> data = {
+        'reserva_id': reservaId,
+        'empleado_id': currentEmployeeId,
+        'tipo': tipo,
+        'estado': 'Pendiente',
+        'es_manual': true,
+        'comentario': comentario,
+        if (kilometraje != null) 'kilometraje': kilometraje,
+        ...photoUrls,
+      };
+
+      await _supabase
+          .schema('flotilla')
+          .from('registros_vehiculos')
+          .insert(data)
+          .timeout(const Duration(seconds: 30));
+
+      await fetchData();
+      return true;
+    } catch (e) {
+      debugPrint("Error saving manual vehicle register: $e");
+      errorMessage = "Error al enviar registro manual: $e";
       return false;
     } finally {
       isLoading = false;
@@ -1378,7 +1515,8 @@ class AppProvider extends ChangeNotifier {
 
       await _supabase.storage
           .from('fotos_registro_vehiculos')
-          .upload(path, file);
+          .upload(path, file)
+          .timeout(const Duration(seconds: 40)); // evita que se quede colgado
 
       return fileName;
     } catch (e) {

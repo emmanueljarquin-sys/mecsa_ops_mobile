@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../models/liquidacion.dart';
 import '../services/liquidaciones_service.dart';
+import '../services/offline_service.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 
@@ -620,6 +621,33 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
             ? null
             : _descripcionController.text.trim(),
       );
+
+      // ── SIN CONEXIÓN (liquidación nueva): encolar liquidación + facturas ──
+      if (widget.liquidacion == null && !await OfflineService.instance.hayConexion()) {
+        await OfflineService.instance.enqueue(
+          type: 'liquidacion',
+          record: liquidacion.toJson(),
+          children: _facturas.map((f) => {
+            'record': {
+              'proveedor': f.proveedor,
+              'numero_factura': f.numeroFactura,
+              'tipo': f.tipo,
+              'monto': f.monto,
+              'fecha': f.fecha.toIso8601String().split('T').first,
+              if (f.documento != null && f.localDocPath == null) 'documento': f.documento,
+            },
+            'photos': f.localDocPath != null ? {'documento': f.localDocPath!} : <String, String>{},
+          }).toList(),
+        );
+        if (mounted) {
+          Navigator.pop(context, true);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Liquidación guardada sin conexión. Se subirá cuando haya internet.'),
+            backgroundColor: Colors.orange,
+          ));
+        }
+        return;
+      }
 
       Liquidacion savedLiquidacion;
       if (widget.liquidacion == null) {
@@ -1340,12 +1368,18 @@ class _FacturaDialogState extends State<_FacturaDialog> {
     if (_formKey.currentState!.validate()) {
       setState(() => _isUploading = true);
       String? documentoPath;
+      String? localDoc;
 
       try {
         if (_localImagePath != null) {
-          documentoPath = await LiquidacionesService.uploadDocumento(
-            _localImagePath!,
-          );
+          // Con conexión: subir ya. Sin conexión: diferir (se sube al sincronizar).
+          if (await OfflineService.instance.hayConexion()) {
+            documentoPath = await LiquidacionesService.uploadDocumento(
+              _localImagePath!,
+            );
+          } else {
+            localDoc = _localImagePath;
+          }
         }
 
         final factura = Factura(
@@ -1355,6 +1389,7 @@ class _FacturaDialogState extends State<_FacturaDialog> {
           monto: double.parse(_montoController.text),
           fecha: _selectedDate,
           documento: documentoPath,
+          localDocPath: localDoc,
         );
         widget.onSave(factura);
         Navigator.pop(context);

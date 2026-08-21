@@ -130,6 +130,9 @@ class Factura {
   final DateTime fecha;
   final String? documento;
   final DateTime? createdAt;
+  // Transitorio (no se serializa): ruta LOCAL del comprobante cuando se agrega
+  // sin conexión, para subirlo al sincronizar.
+  String? localDocPath;
 
   Factura({
     this.id,
@@ -141,6 +144,7 @@ class Factura {
     required this.fecha,
     this.documento,
     this.createdAt,
+    this.localDocPath,
   });
 
   factory Factura.fromJson(Map<String, dynamic> json) {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../services/offline_service.dart';
 
 class VehicleRegisterScreen extends StatefulWidget {
   final Map<String, dynamic> reservation;
@@ -74,8 +75,32 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
   }
 
   Future<void> _takePhoto(String key) async {
+    // Deja elegir entre cámara y galería. La galería permite que el personal
+    // que no logró marcar en el momento adjunte fotos que ya tiene tomadas.
+    final ImageSource? source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Colors.blue),
+              title: const Text('Tomar foto'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Colors.green),
+              title: const Text('Elegir de la galería'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
     final XFile? photo = await _picker.pickImage(
-      source: ImageSource.camera,
+      source: source,
       imageQuality: 70,
     );
     if (photo != null) {
@@ -108,6 +133,12 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
       if (value != null) localPhotos[key] = File(value.path);
     });
 
+    // ── SIN CONEXIÓN: guardar en la cola y subir cuando vuelva el internet ──
+    if (!await OfflineService.instance.hayConexion()) {
+      await _encolarParaSubir('Guardado sin conexión. Se subirá solo cuando haya internet.');
+      return;
+    }
+
     try {
       final success = await provider.saveVehicleRegister(
         reservaId: widget.reservation['id'].toString(),
@@ -136,17 +167,128 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Registro guardado con éxito")),
         );
+      } else if (!success && mounted) {
+        // La subida en vivo no completó (señal débil) → encolar y subir solo.
+        await _encolarParaSubir('No se pudo subir ahora (señal débil). Se subirá automáticamente cuando haya buena señal.');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Error: $e"),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+      if (!mounted) return;
+      try {
+        await _encolarParaSubir('No se pudo subir ahora (señal débil). Se subirá automáticamente cuando haya buena señal.');
+      } catch (_) {
+        if (mounted) _ofrecerRegistroManual(localPhotos);
       }
+    }
+  }
+
+  // Encola el registro (con sus fotos) para subirlo automáticamente cuando haya
+  // conexión. Se usa sin conexión y cuando la subida en vivo falla (señal débil).
+  Future<void> _encolarParaSubir(String mensaje) async {
+    final provider = Provider.of<AppProvider>(context, listen: false);
+    await OfflineService.instance.enqueue(
+      type: 'registro_vehiculo',
+      record: {
+        'reserva_id': widget.reservation['id'].toString(),
+        'empleado_id': provider.currentEmployeeId,
+        'tipo': widget.tipo,
+        'kilometraje': double.tryParse(_kilometrajeController.text),
+        'nivel_aceite': double.tryParse(_aceiteController.text) ?? 100.0,
+        'nivel_combustible': double.tryParse(_combustibleController.text) ?? 100.0,
+        'estado_pintura': _estadoPintura,
+        'estado_llantas': _estadoLlantas,
+        'estado_interiores': _estadoInteriores,
+        'posee_kit': _poseeKit,
+        'posee_refraccion': _poseeRefraccion,
+        'posee_compass': _poseeCompass,
+        'ubicacion': '',
+      },
+      photos: {
+        for (final e in _photos.entries)
+          if (e.value != null) e.key: e.value!.path,
+      },
+    );
+    if (mounted) {
+      if (widget.tipo == 'entrada') {
+        provider.clearTripDistance(widget.reservation['id'].toString());
+        provider.trackingService.stopTracking();
+      }
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(mensaje),
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 4),
+      ));
+    }
+  }
+
+  // Respaldo: si el registro normal falla/se cuelga, envía comentario + fotos
+  // como registro MANUAL, que un admin aprueba en la web.
+  Future<void> _ofrecerRegistroManual(Map<String, dynamic> localPhotos) async {
+    final comentarioCtrl = TextEditingController();
+    final enviar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('No se pudo registrar'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Podés enviar un registro manual con tus observaciones y tus fotos '
+              '(podés elegirlas de la galería). Un administrador lo revisará y '
+              'aprobará en la web.',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: comentarioCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Observaciones',
+                hintText: 'Qué pasó / detalle…',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enviar para aprobación')),
+        ],
+      ),
+    );
+    if (enviar != true || !mounted) return;
+
+    final provider = Provider.of<AppProvider>(context, listen: false);
+    final ok = await provider.saveVehicleRegisterManual(
+      reservaId: widget.reservation['id'].toString(),
+      tipo: widget.tipo,
+      comentario: comentarioCtrl.text.trim().isEmpty
+          ? 'Registro manual (falló el registro automático)'
+          : comentarioCtrl.text.trim(),
+      localPhotos: localPhotos,
+      kilometraje: double.tryParse(_kilometrajeController.text),
+    );
+    if (!mounted) return;
+    if (ok) {
+      if (widget.tipo == 'entrada') {
+        provider.clearTripDistance(widget.reservation['id'].toString());
+        provider.trackingService.stopTracking();
+      }
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Registro enviado para aprobación'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo enviar el registro manual. Revisá tu conexión.'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 

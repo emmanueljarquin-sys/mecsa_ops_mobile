@@ -281,6 +281,53 @@ class LiquidacionesService {
     }
   }
 
+  // Actualizar factura (solo si la liquidación sigue pendiente — lo valida
+  // el trigger viaticos._guard_factura_editable en la BD).
+  static Future<Factura> updateFactura(String id, Factura factura) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final data = factura.toJson()..remove('liquidacion_id');
+      final res = await supabase
+          .schema('viaticos')
+          .from('facturas')
+          .update(data)
+          .eq('id', id)
+          .select()
+          .single();
+      return Factura.fromJson(res);
+    } catch (e) {
+      print('DEBUG: ERROR en updateFactura vía Supabase: $e');
+      rethrow;
+    }
+  }
+
+  // ── Comentarios (hilo/bitácora de una liquidación) ─────────────────────
+  static Future<List<Map<String, dynamic>>> getComentarios(String liquidacionId) async {
+    final supabase = Supabase.instance.client;
+    final rows = await supabase
+        .schema('viaticos')
+        .from('liquidacion_comentarios')
+        .select('*')
+        .eq('liquidacion_id', liquidacionId)
+        .order('created_at', ascending: true);
+    return (rows as List).map((r) => Map<String, dynamic>.from(r)).toList();
+  }
+
+  static Future<void> addComentario({
+    required String liquidacionId,
+    String? autorId,
+    String? autorNombre,
+    required String comentario,
+  }) async {
+    final supabase = Supabase.instance.client;
+    await supabase.schema('viaticos').from('liquidacion_comentarios').insert({
+      'liquidacion_id': liquidacionId,
+      'autor_id': autorId,
+      'autor_nombre': autorNombre,
+      'comentario': comentario,
+    });
+  }
+
   // Eliminar factura
   static Future<void> deleteFactura(String id) async {
     try {
