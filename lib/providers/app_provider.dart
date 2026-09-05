@@ -587,13 +587,17 @@ class AppProvider extends ChangeNotifier {
           .from('reservas')
           .select('*, vehiculos(*)')
           .eq('empleado_id', currentEmployeeId!)
-          .order('fecha_salida', ascending: true);
+          .order('fecha_salida', ascending: false);
 
-      final now = DateTime.now();
+      // Mostrar próximas + recientes (últimos 60 días). Antes el filtro era
+      // fecha_regreso > now, que ocultaba ~93% de las reservas: casi todas son
+      // del mismo día y desaparecían al pasar la hora de regreso, así que los
+      // usuarios "no veían las reservas hechas por ellos".
+      final cutoff = DateTime.now().subtract(const Duration(days: 60));
       myReservations = List<Map<String, dynamic>>.from(res)
           .where((r) {
             final fechaRegreso = DateTime.tryParse(r['fecha_regreso'] ?? '');
-            return fechaRegreso == null || fechaRegreso.isAfter(now);
+            return fechaRegreso == null || fechaRegreso.isAfter(cutoff);
           })
           .toList();
 
@@ -608,12 +612,12 @@ class AppProvider extends ChangeNotifier {
             .from('reservas')
             .select()
             .eq('empleado_id', currentEmployeeId!)
-            .order('fecha_salida', ascending: true);
-        final now = DateTime.now();
+            .order('fecha_salida', ascending: false);
+        final cutoff = DateTime.now().subtract(const Duration(days: 60));
         myReservations = List<Map<String, dynamic>>.from(res)
             .where((r) {
               final fechaRegreso = DateTime.tryParse(r['fecha_regreso'] ?? '');
-              return fechaRegreso == null || fechaRegreso.isAfter(now);
+              return fechaRegreso == null || fechaRegreso.isAfter(cutoff);
             })
             .toList();
       } catch (e2) {
@@ -1371,6 +1375,22 @@ class AppProvider extends ChangeNotifier {
       if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
       if (currentEmployeeId == null) throw "No se encontró el ID de empleado";
 
+      // Idempotencia (igual que el path offline _subirRegistro): si YA existe un
+      // registro para esta reserva+tipo (no rechazado), NO duplicar → devolver éxito.
+      // Evita registros dobles cuando se pierde la respuesta y el usuario reintenta.
+      try {
+        final ya = await _supabase
+            .schema('flotilla')
+            .from('registros_vehiculos')
+            .select('id')
+            .eq('reserva_id', reservaId)
+            .eq('tipo', tipo)
+            .neq('estado', 'Rechazado')
+            .limit(1)
+            .timeout(const Duration(seconds: 15));
+        if ((ya as List).isNotEmpty) return true;
+      } catch (_) { /* si el chequeo falla por red, seguimos e intentamos igual */ }
+
       // 1. Upload photos in parallel
       final Map<String, String> photoUrls = {};
       final List<Future<void>> uploadFutures = [];
@@ -1427,8 +1447,10 @@ class AppProvider extends ChangeNotifier {
           .insert(data)
           .timeout(const Duration(seconds: 30));
 
-      // Refresh data
-      await fetchData();
+      // El registro YA quedó guardado. Refrescar en SEGUNDO PLANO (sin await):
+      // fetchData() no tiene timeouts y con mala señal se colgaba, dejando la UI
+      // atascada en "Subiendo" aunque la salida/entrada ya se había guardado.
+      fetchData().catchError((_) {});
       return true;
     } catch (e) {
       debugPrint("Error saving vehicle register: $e");
@@ -1487,7 +1509,9 @@ class AppProvider extends ChangeNotifier {
           .insert(data)
           .timeout(const Duration(seconds: 30));
 
-      await fetchData();
+      // Guardado OK. Refresco en segundo plano (misma razón que saveVehicleRegister:
+      // evitar que fetchData() sin timeout cuelgue la UI en "Subiendo").
+      fetchData().catchError((_) {});
       return true;
     } catch (e) {
       debugPrint("Error saving manual vehicle register: $e");

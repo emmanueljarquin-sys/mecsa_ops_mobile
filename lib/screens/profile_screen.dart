@@ -406,6 +406,7 @@ class ProfileScreen extends StatelessWidget {
                             : null,
                         onTap: () async {
                           await provider.setGpsVoice(voice['name']!);
+                          if (!context.mounted) return;
                           Navigator.pop(context);
                         },
                       );

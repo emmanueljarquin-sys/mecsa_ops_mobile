@@ -1,3 +1,5 @@
+import '../utils/num_parse.dart';
+
 class Liquidacion {
   final String id;
   final String empleadoId;
@@ -47,9 +49,7 @@ class Liquidacion {
       empleadoId: json['empleado_id']?.toString() ?? '',
       empleadoNombre: json['empleado']?['nombre'],
       empleadoApellido: json['empleado']?['apellido'],
-      fecha: json['fecha'] != null
-          ? DateTime.parse(json['fecha'])
-          : DateTime.now(),
+      fecha: DateTime.tryParse(json['fecha']?.toString() ?? '') ?? DateTime.now(),
       tarjetaUlt4: json['tarjeta_ult4'],
       proyectoId: json['proyecto_id'] != null
           ? (json['proyecto_id'] is int
@@ -60,7 +60,7 @@ class Liquidacion {
       tipo: json['tipo'] ?? 'VIATICOS',
       personalIncluido: json['personal_incluido'],
       estado: json['estado'] ?? 'pendiente',
-      total: json['total'] != null ? (json['total'] as num).toDouble() : null,
+      total: json['total'] != null ? toDoubleSafe(json['total']) : null,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : DateTime.now(),
@@ -77,7 +77,7 @@ class Liquidacion {
           ? Map<String, double>.from(
               (json['totales'] as Map).map(
                 (key, value) =>
-                    MapEntry(key.toString(), (value as num).toDouble()),
+                    MapEntry(key.toString(), toDoubleSafe(value)),
               ),
             )
           : null,
@@ -154,8 +154,10 @@ class Factura {
       proveedor: json['proveedor'],
       numeroFactura: json['numero_factura'],
       tipo: json['tipo'],
-      monto: (json['monto'] as num).toDouble(),
-      fecha: DateTime.parse(json['fecha']),
+      // A prueba de null/tipo: si monto viene como texto ("1000,50") o null,
+      // NO reventar (una factura mala tumbaba la carga de TODA la liquidación).
+      monto: toDoubleSafe(json['monto']),
+      fecha: DateTime.tryParse(json['fecha']?.toString() ?? '') ?? DateTime.now(),
       documento: json['documento'],
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
@@ -211,9 +213,12 @@ class Empleado {
   factory Empleado.fromJson(Map<String, dynamic> json) {
     return Empleado(
       id: json['id'].toString(),
-      nombre: json['nombre'],
-      apellido: json['apellido'],
-      departamento: json['departamento'],
+      // A prueba de nulls: si nombre/apellido vienen NULL (fichas basura/migración),
+      // NO reventar el parseo (antes tumbaba TODA la lista de empleados -> se veían
+      // como "Empleado #id" y el selector de personal quedaba vacío).
+      nombre: (json['nombre'] ?? '').toString(),
+      apellido: (json['apellido'] ?? '').toString(),
+      departamento: json['departamento']?.toString(),
     );
   }
 
@@ -229,7 +234,7 @@ class Proyecto {
 
   factory Proyecto.fromJson(Map<String, dynamic> json) {
     return Proyecto(
-      id: (json['project_id'] ?? json['id'] ?? 0) as int,
+      id: toIntSafe(json['project_id'] ?? json['id'], 0),
       nombre: json['nombre'] ?? 'Sin nombre',
       zona: json['zona'],
     );

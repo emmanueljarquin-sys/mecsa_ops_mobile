@@ -73,6 +73,7 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) throw 'Servicio de ubicación desactivado';
 
+      if (!mounted) return;
       LocationPermission permission = await LocationHelper.requestPermissionWithDisclosure(context);
       if (permission == LocationPermission.denied) throw 'Permiso denegado';
 

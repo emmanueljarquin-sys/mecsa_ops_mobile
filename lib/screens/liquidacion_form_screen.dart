@@ -6,6 +6,7 @@ import '../services/liquidaciones_service.dart';
 import '../services/offline_service.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../utils/num_parse.dart';
 
 class LiquidacionFormScreen extends StatefulWidget {
   final Liquidacion? liquidacion;
@@ -53,6 +54,13 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
       final e = _empleados.firstWhere((e) => e.id == _selectedEmpleadoId);
       return e.nombreCompleto;
     } catch (_) {
+      // Defensa extra: si no está en la lista pero es el usuario actual, usar
+      // su nombre ya resuelto en el provider en vez de mostrar el id crudo.
+      final data = Provider.of<AppProvider>(context, listen: false).currentEmployeeData;
+      if (data != null && _selectedEmpleadoId == data['id']?.toString()) {
+        final n = '${data['nombre'] ?? ''} ${data['apellido'] ?? ''}'.trim();
+        if (n.isNotEmpty) return n;
+      }
       return 'Empleado #${_selectedEmpleadoId}';
     }
   }
@@ -534,6 +542,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
         _isLoadingData = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoadingData = false);
       ScaffoldMessenger.of(
         context,
@@ -1386,14 +1395,16 @@ class _FacturaDialogState extends State<_FacturaDialog> {
           proveedor: _proveedorController.text,
           numeroFactura: _numeroController.text,
           tipo: _selectedTipo,
-          monto: double.parse(_montoController.text),
+          monto: parseNum(_montoController.text),
           fecha: _selectedDate,
           documento: documentoPath,
           localDocPath: localDoc,
         );
         widget.onSave(factura);
+        if (!mounted) return;
         Navigator.pop(context);
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error al subir imagen: $e')));

@@ -335,10 +335,15 @@ class _TripNavScreenState extends State<TripNavScreen> {
       if (locationData.contains('|')) {
         final parts = locationData.split('|');
         final coords = parts[0].split(',');
-        destCoords = LatLng(
-          double.parse(coords[0].trim()),
-          double.parse(coords[1].trim()),
-        );
+        final lat = coords.isNotEmpty ? double.tryParse(coords[0].trim()) : null;
+        final lng = coords.length > 1 ? double.tryParse(coords[1].trim()) : null;
+        if (lat != null && lng != null) {
+          destCoords = LatLng(lat, lng);
+        } else {
+          // El primer segmento no eran coordenadas válidas → geocodificar la etiqueta.
+          destCoords =
+              await _geocodeAddress(parts.length > 1 ? parts[1] : locationData);
+        }
       } else if (locationData.contains(',')) {
         final parts = locationData.split(',');
         if (parts.length == 2 &&
@@ -851,6 +856,7 @@ class _TripNavScreenState extends State<TripNavScreen> {
                             _tts.speak(
                               "Esta es una prueba de la voz seleccionada.",
                             );
+                            if (!context.mounted) return;
                             Navigator.pop(context);
                           },
                         );

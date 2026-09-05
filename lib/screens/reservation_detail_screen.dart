@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:printing/printing.dart';
+import 'package:gal/gal.dart';
 import '../providers/app_provider.dart';
+import '../services/ruta_pdf_service.dart';
 import '../widgets/correccion_widgets.dart';
 import 'vehicle_register_screen.dart';
 import 'trip_nav_screen.dart';
@@ -393,6 +396,208 @@ class ReservationDetailScreen extends StatelessWidget {
     }
   }
 
+  // ----- Exportar registro de ruta: PDF + guardar fotos al carrete -----
+
+  Widget _buildExportButtons(
+    BuildContext context, {
+    required Map<String, dynamic> regSalida,
+    required Map<String, dynamic> regEntrada,
+    required double kmSalida,
+    required double kmEntrada,
+    required double kmTotal,
+    required DateTime tSalida,
+    required DateTime tEntrada,
+    required String duracion,
+  }) {
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _exportarPdf(
+              context,
+              regSalida: regSalida,
+              regEntrada: regEntrada,
+              kmSalida: kmSalida,
+              kmEntrada: kmEntrada,
+              kmTotal: kmTotal,
+              tSalida: tSalida,
+              tEntrada: tEntrada,
+              duracion: duracion,
+            ),
+            icon: const Icon(Icons.picture_as_pdf, size: 18),
+            label: const Text("DESCARGAR PDF DE LA VISITA"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF013483),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _guardarFotos(context, regSalida, regEntrada),
+            icon: const Icon(Icons.download, size: 18),
+            label: const Text("GUARDAR FOTOS EN LA GALERÍA"),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF013483),
+              side: const BorderSide(color: Color(0xFF013483)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _exportarPdf(
+    BuildContext context, {
+    required Map<String, dynamic> regSalida,
+    required Map<String, dynamic> regEntrada,
+    required double kmSalida,
+    required double kmEntrada,
+    required double kmTotal,
+    required DateTime tSalida,
+    required DateTime tEntrada,
+    required String duracion,
+  }) async {
+    final messenger = ScaffoldMessenger.of(context);
+    _mostrarCargando(context, "Generando PDF…");
+    try {
+      final vehiculo =
+          reservation['vehiculos'] is Map ? reservation['vehiculos'] : {};
+      final marca = (vehiculo['marca'] ?? '').toString();
+      final modelo = (vehiculo['modelo'] ?? 'Vehículo').toString();
+      final nombreVehiculo =
+          "$marca $modelo".trim().isEmpty ? "Vehículo" : "$marca $modelo".trim();
+      final placa = (vehiculo['placa'] ?? 'Sin placa').toString();
+
+      String? conductor;
+      final emp = reservation['empleado'];
+      if (emp is Map && emp['nombre'] != null) {
+        conductor = emp['nombre'].toString();
+      }
+      conductor ??= reservation['empleado_nombre']?.toString();
+
+      final bytes = await RutaPdfService.construirPdf(
+        vehiculo: nombreVehiculo,
+        placa: placa,
+        destino: _destinoLegible(),
+        conductor: conductor,
+        fechaSalida: _formatDate(reservation['fecha_salida']),
+        fechaRegreso: _formatDate(reservation['fecha_regreso']),
+        motivo: (reservation['motivo'] ?? 'No especificado').toString(),
+        reservaId: reservation['id'].toString(),
+        kmSalida: kmSalida,
+        kmEntrada: kmEntrada,
+        kmTotal: kmTotal,
+        duracion: duracion,
+        horaSalida: _hora(tSalida),
+        horaEntrada: _hora(tEntrada),
+        regSalida: regSalida,
+        regEntrada: regEntrada,
+      );
+
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop(); // cerrar loading
+      }
+      final placaFile = placa.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: 'visita_${placaFile}_${reservation['id']}.pdf',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text("No se pudo generar el PDF: $e")),
+      );
+    }
+  }
+
+  Future<void> _guardarFotos(
+    BuildContext context,
+    Map<String, dynamic> regSalida,
+    Map<String, dynamic> regEntrada,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final urls = RutaPdfService.urlsDeFotos(regSalida, regEntrada);
+    if (urls.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("No hay fotos para guardar.")),
+      );
+      return;
+    }
+
+    // Permiso de galería.
+    try {
+      if (!await Gal.hasAccess()) {
+        if (!await Gal.requestAccess()) {
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text("Se necesita permiso para guardar en la galería."),
+            ),
+          );
+          return;
+        }
+      }
+    } catch (_) {}
+
+    if (!context.mounted) {
+      return;
+    }
+    _mostrarCargando(context, "Guardando fotos…");
+    int ok = 0;
+    for (final u in urls) {
+      final bytes = await RutaPdfService.descargarBytes(u);
+      if (bytes != null) {
+        try {
+          await Gal.putImageBytes(bytes, album: 'MecsaOPS');
+          ok++;
+        } catch (_) {}
+      }
+    }
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(ok == urls.length
+            ? "$ok fotos guardadas en la galería."
+            : "$ok de ${urls.length} fotos guardadas."),
+      ),
+    );
+  }
+
+  void _mostrarCargando(BuildContext context, String msg) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 16),
+            Expanded(child: Text(msg)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _destinoLegible() {
+    final u = reservation['ubicacion']?.toString() ?? '';
+    if (u.isEmpty) return 'Sin ubicación';
+    final parts = u.split('|');
+    return parts.length > 1 ? parts[1] : u;
+  }
+
+  String _hora(DateTime d) =>
+      "${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}";
+
   Widget _buildRegistrationButtons(BuildContext context) {
     final supabase = Supabase.instance.client;
     final reservaId = reservation['id'].toString();
@@ -597,6 +802,18 @@ class ReservationDetailScreen extends StatelessWidget {
                       fontSize: 14,
                     ),
                   ),
+                ),
+                const Divider(height: 24),
+                _buildExportButtons(
+                  context,
+                  regSalida: regSalida,
+                  regEntrada: regEntrada,
+                  kmSalida: kmSalida,
+                  kmEntrada: kmEntrada,
+                  kmTotal: kmTotales,
+                  tSalida: tSalida,
+                  tEntrada: tEntrada,
+                  duracion: duracionStr,
                 ),
                 // Banners de solicitud ya enviada (si aplica)
                 if ((regSalida['solicitud_correccion'] ?? '').toString().isNotEmpty) ...[

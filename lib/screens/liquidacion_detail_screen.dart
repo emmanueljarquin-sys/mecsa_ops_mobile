@@ -10,6 +10,7 @@ import '../services/liquidaciones_service.dart';
 import '../services/offline_service.dart';
 import '../providers/app_provider.dart';
 import '../widgets/correccion_widgets.dart';
+import '../utils/num_parse.dart';
 
 class LiquidacionDetailScreen extends StatefulWidget {
   final String liquidacionId;
@@ -916,7 +917,7 @@ class _FacturaFormSheetState extends State<_FacturaFormSheet> {
           'proveedor': _proveedor.text.trim(),
           'numero_factura': _numero.text.trim(),
           'tipo': _tipo,
-          'monto': double.parse(_monto.text.trim()),
+          'monto': parseNum(_monto.text),
           'fecha': _fecha.toIso8601String().split('T').first,
         },
         photos: _nuevoDoc != null ? {'documento': _nuevoDoc!.path} : null,
@@ -941,7 +942,7 @@ class _FacturaFormSheetState extends State<_FacturaFormSheet> {
         proveedor: _proveedor.text.trim(),
         numeroFactura: _numero.text.trim(),
         tipo: _tipo,
-        monto: double.parse(_monto.text.trim()),
+        monto: parseNum(_monto.text),
         fecha: _fecha,
         documento: _documentoPath,
       );

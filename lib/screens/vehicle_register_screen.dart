@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../services/offline_service.dart';
+import '../utils/num_parse.dart';
 
 class VehicleRegisterScreen extends StatefulWidget {
   final Map<String, dynamic> reservation;
@@ -143,7 +144,7 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
       final success = await provider.saveVehicleRegister(
         reservaId: widget.reservation['id'].toString(),
         tipo: widget.tipo,
-        kilometraje: double.parse(_kilometrajeController.text),
+        kilometraje: parseNum(_kilometrajeController.text),
         nivelAceite: double.tryParse(_aceiteController.text) ?? 100.0,
         nivelCombustible: double.tryParse(_combustibleController.text) ?? 100.0,
         estadoPintura: _estadoPintura,
@@ -191,7 +192,7 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
         'reserva_id': widget.reservation['id'].toString(),
         'empleado_id': provider.currentEmployeeId,
         'tipo': widget.tipo,
-        'kilometraje': double.tryParse(_kilometrajeController.text),
+        'kilometraje': parseNum(_kilometrajeController.text),
         'nivel_aceite': double.tryParse(_aceiteController.text) ?? 100.0,
         'nivel_combustible': double.tryParse(_combustibleController.text) ?? 100.0,
         'estado_pintura': _estadoPintura,
@@ -267,7 +268,7 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
           ? 'Registro manual (falló el registro automático)'
           : comentarioCtrl.text.trim(),
       localPhotos: localPhotos,
-      kilometraje: double.tryParse(_kilometrajeController.text),
+      kilometraje: parseNum(_kilometrajeController.text),
     );
     if (!mounted) return;
     if (ok) {
@@ -519,7 +520,7 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
         filled: !enabled,
         fillColor: !enabled ? Colors.grey.shade100 : null,
       ),
-      validator: (v) => (v == null || v.isEmpty) ? "Requerido" : null,
+      validator: (v) => (v == null || v.trim().isEmpty) ? "Requerido" : (!isNum(v) ? "Número inválido" : null),
     );
   }
 

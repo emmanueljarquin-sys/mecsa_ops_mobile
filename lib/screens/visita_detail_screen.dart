@@ -639,6 +639,7 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                   _visita['hora_inicio_dt'] = DateTime.now()
                       .toIso8601String(); // Para cálculos precisos
                 });
+                if (!mounted) return;
                 Navigator.pop(context); // Cerrar dialog
                 // Navegar automáticamente a la ruta
                 Navigator.push(
