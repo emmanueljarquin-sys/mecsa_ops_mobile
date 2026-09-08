@@ -23,15 +23,20 @@ class LiquidacionesService {
       final supabase = Supabase.instance.client;
       final offset = (page - 1) * limit;
 
+      // Fail-closed: nunca consultar liquidaciones sin un empleadoId válido.
+      // Si el filtro se omitiera, Supabase devolvería liquidaciones de otros usuarios.
+      final bool empleadoIdValido = empleadoId != null && empleadoId != 'null' && empleadoId.isNotEmpty;
+      print('DEBUG getLiquidaciones: empleadoId=[$empleadoId] valido=$empleadoIdValido');
+      if (!empleadoIdValido) {
+        throw Exception('empleadoId requerido para consultar liquidaciones (recibido: "$empleadoId")');
+      }
+
       var query = supabase
           .schema('viaticos')
           .from('liquidaciones')
-          .select('*');
+          .select('*')
+          .eq('empleado_id', empleadoId);
 
-      // Filtros
-      if (empleadoId != null && empleadoId != 'null' && empleadoId.isNotEmpty) {
-        query = query.eq('empleado_id', empleadoId);
-      }
       if (proyectoId != null) {
         query = query.eq('proyecto_id', proyectoId);
       }
