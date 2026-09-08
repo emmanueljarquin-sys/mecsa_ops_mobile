@@ -1,8 +1,16 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/liquidacion.dart';
 import '../services/liquidaciones_service.dart';
+import '../services/offline_service.dart';
+import '../providers/app_provider.dart';
+import '../widgets/correccion_widgets.dart';
+import '../utils/num_parse.dart';
 
 class LiquidacionDetailScreen extends StatefulWidget {
   final String liquidacionId;
@@ -18,6 +26,17 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
   Liquidacion? liquidacion;
   bool isLoading = true;
   String? error;
+
+  // Comentarios (hilo)
+  List<Map<String, dynamic>> _comentarios = [];
+  final _comentarioCtrl = TextEditingController();
+  bool _sendingComentario = false;
+
+  @override
+  void dispose() {
+    _comentarioCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -39,11 +58,50 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
         liquidacion = result;
         isLoading = false;
       });
+      _loadComentarios();
     } catch (e) {
       setState(() {
         error = e.toString();
         isLoading = false;
       });
+    }
+  }
+
+  Future<void> _loadComentarios() async {
+    try {
+      final c = await LiquidacionesService.getComentarios(widget.liquidacionId);
+      if (mounted) setState(() => _comentarios = c);
+    } catch (_) {
+      // silencioso: si falla, solo no muestra comentarios
+    }
+  }
+
+  Future<void> _addComentario() async {
+    final texto = _comentarioCtrl.text.trim();
+    if (texto.isEmpty) return;
+    setState(() => _sendingComentario = true);
+    try {
+      final p = Provider.of<AppProvider>(context, listen: false);
+      final data = p.currentEmployeeData;
+      final nombre = data == null
+          ? null
+          : '${data['nombre'] ?? ''} ${data['apellido'] ?? ''}'.trim();
+      await LiquidacionesService.addComentario(
+        liquidacionId: widget.liquidacionId,
+        autorId: p.currentEmployeeId,
+        autorNombre: (nombre == null || nombre.isEmpty) ? 'Yo' : nombre,
+        comentario: texto,
+      );
+      _comentarioCtrl.clear();
+      await _loadComentarios();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo enviar: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sendingComentario = false);
     }
   }
 
@@ -88,6 +146,58 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
     }
   }
 
+  bool get _editable => liquidacion?.estado == 'pendiente';
+
+  Future<void> _abrirFormFactura({Factura? existente}) async {
+    final guardado = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _FacturaFormSheet(
+        liquidacionId: widget.liquidacionId,
+        existente: existente,
+      ),
+    );
+    if (guardado == true && mounted) _loadDetail();
+  }
+
+  Future<void> _eliminarFactura(Factura f) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar factura'),
+        content: Text('¿Eliminar la factura de ${f.proveedor} por ₡${f.monto.toStringAsFixed(2)}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await LiquidacionesService.deleteFactura(f.id!);
+      if (mounted) {
+        _loadDetail();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Factura eliminada')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${_msg(e)}'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  static String _msg(Object e) =>
+      e.toString().replaceAll('Exception: ', '').replaceAll('PostgrestException(message: ', '').split(',').first;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -96,14 +206,35 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
         title: const Text('Detalle de Liquidación'),
         backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
-        actions: liquidacion != null && liquidacion!.estado == 'pendiente'
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.delete),
-                  onPressed: _deleteLiquidacion,
-                ),
-              ]
-            : null,
+        actions: liquidacion == null
+            ? null
+            : [
+                if (liquidacion!.estado == 'pendiente')
+                  IconButton(
+                    icon: const Icon(Icons.delete),
+                    tooltip: 'Eliminar',
+                    onPressed: _deleteLiquidacion,
+                  ),
+                // Botón "Solicitar corrección" solo si NO está pendiente
+                // (aún editable) y NO tiene ya una solicitud abierta
+                if (liquidacion!.estado != 'pendiente' &&
+                    (liquidacion!.solicitudCorreccion == null ||
+                        liquidacion!.solicitudCorreccion!.isEmpty))
+                  IconButton(
+                    icon: const Icon(Icons.edit_note),
+                    tooltip: 'Solicitar corrección',
+                    onPressed: () async {
+                      final ok = await showSolicitarCorreccionDialog(
+                        context,
+                        schema: 'viaticos',
+                        table: 'liquidaciones',
+                        recordId: liquidacion!.id,
+                        titulo: 'Solicitar corrección de liquidación',
+                      );
+                      if (ok && mounted) _loadDetail();
+                    },
+                  ),
+              ],
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -128,6 +259,19 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Banner de corrección (si aplica)
+                  if (liquidacion != null &&
+                      liquidacion!.solicitudCorreccion != null &&
+                      liquidacion!.solicitudCorreccion!.isNotEmpty)
+                    CorreccionBanner(
+                      motivo: liquidacion!.solicitudCorreccion!,
+                      fecha: liquidacion!.fechaCorreccion
+                          ?.toLocal()
+                          .toString()
+                          .split('.')
+                          .first,
+                      respuestaAdmin: liquidacion!.respuestaAdmin,
+                    ),
                   // Información General
                   _SectionCard(
                     title: 'Información General',
@@ -221,29 +365,145 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
                   _SectionCard(
                     title: 'Facturas (${liquidacion!.facturas?.length ?? 0})',
                     icon: Icons.receipt,
+                    trailing: _editable
+                        ? TextButton.icon(
+                            onPressed: () => _abrirFormFactura(),
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Agregar'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Theme.of(context).primaryColor,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                          )
+                        : null,
                     child:
                         liquidacion!.facturas == null ||
                             liquidacion!.facturas!.isEmpty
-                        ? const Center(
+                        ? Center(
                             child: Padding(
-                              padding: EdgeInsets.all(16.0),
+                              padding: const EdgeInsets.all(16.0),
                               child: Text(
-                                'No hay facturas registradas',
-                                style: TextStyle(color: Colors.grey),
+                                _editable
+                                    ? 'Sin facturas. Tocá "Agregar" para añadir una.'
+                                    : 'No hay facturas registradas',
+                                style: const TextStyle(color: Colors.grey),
+                                textAlign: TextAlign.center,
                               ),
                             ),
                           )
                         : Column(
                             children: liquidacion!.facturas!
                                 .map(
-                                  (factura) => _FacturaItem(factura: factura),
+                                  (factura) => _FacturaItem(
+                                    factura: factura,
+                                    editable: _editable,
+                                    onEdit: () => _abrirFormFactura(existente: factura),
+                                    onDelete: () => _eliminarFactura(factura),
+                                  ),
                                 )
                                 .toList(),
                           ),
                   ),
+
+                  const SizedBox(height: 16),
+
+                  // Comentarios (hilo)
+                  _buildComentariosSection(),
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildComentariosSection() {
+    final primary = Theme.of(context).primaryColor;
+    return _SectionCard(
+      title: 'Comentarios (${_comentarios.length})',
+      icon: Icons.forum_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_comentarios.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Aún no hay comentarios.',
+                  style: TextStyle(color: Colors.grey)),
+            )
+          else
+            ..._comentarios.map(_buildComentarioItem),
+          const SizedBox(height: 8),
+          // Caja para agregar comentario (disponible en cualquier estado)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _comentarioCtrl,
+                  minLines: 1,
+                  maxLines: 4,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: InputDecoration(
+                    hintText: 'Escribí un comentario…',
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 44,
+                child: ElevatedButton(
+                  onPressed: _sendingComentario ? null : _addComentario,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: _sendingComentario
+                      ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.send, size: 20),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComentarioItem(Map<String, dynamic> c) {
+    final autor = (c['autor_nombre'] ?? 'Alguien').toString();
+    final texto = (c['comentario'] ?? '').toString();
+    String fecha = '';
+    final rawFecha = c['created_at'];
+    if (rawFecha != null) {
+      final dt = DateTime.tryParse(rawFecha.toString())?.toLocal();
+      if (dt != null) fecha = DateFormat('dd/MM/yyyy HH:mm').format(dt);
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F4F8),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(autor,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Theme.of(context).primaryColor)),
+              Text(fecha, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(texto, style: const TextStyle(fontSize: 14)),
+        ],
+      ),
     );
   }
 
@@ -278,11 +538,13 @@ class _SectionCard extends StatelessWidget {
   final String title;
   final IconData icon;
   final Widget child;
+  final Widget? trailing;
 
   const _SectionCard({
     required this.title,
     required this.icon,
     required this.child,
+    this.trailing,
   });
 
   @override
@@ -294,7 +556,7 @@ class _SectionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -315,6 +577,7 @@ class _SectionCard extends StatelessWidget {
                   color: Theme.of(context).primaryColor,
                 ),
               ),
+              if (trailing != null) ...[const Spacer(), trailing!],
             ],
           ),
           const SizedBox(height: 16),
@@ -391,8 +654,16 @@ class _TotalRow extends StatelessWidget {
 
 class _FacturaItem extends StatelessWidget {
   final Factura factura;
+  final bool editable;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
 
-  const _FacturaItem({required this.factura});
+  const _FacturaItem({
+    required this.factura,
+    this.editable = false,
+    this.onEdit,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -412,7 +683,7 @@ class _FacturaItem extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).primaryColor.withOpacity(0.1),
+                  color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -424,12 +695,32 @@ class _FacturaItem extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(
-                '₡${factura.monto.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+              Row(
+                children: [
+                  Text(
+                    '₡${factura.monto.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  if (editable) ...[
+                    IconButton(
+                      onPressed: onEdit,
+                      icon: const Icon(Icons.edit, size: 18),
+                      color: Colors.blueGrey,
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Editar',
+                    ),
+                    IconButton(
+                      onPressed: onDelete,
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      color: Colors.red,
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Eliminar',
+                    ),
+                  ],
+                ],
               ),
             ],
           ),
@@ -529,5 +820,261 @@ class _FacturaItem extends StatelessWidget {
     } catch (e) {
       debugPrint('Error al abrir documento: $e');
     }
+  }
+}
+
+// =============================================================================
+// Bottom sheet para agregar / editar una factura (solo si la liquidación
+// está pendiente; el trigger de BD garantiza la regla server-side).
+// =============================================================================
+class _FacturaFormSheet extends StatefulWidget {
+  final String liquidacionId;
+  final Factura? existente;
+
+  const _FacturaFormSheet({required this.liquidacionId, this.existente});
+
+  @override
+  State<_FacturaFormSheet> createState() => _FacturaFormSheetState();
+}
+
+class _FacturaFormSheetState extends State<_FacturaFormSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _proveedor;
+  late final TextEditingController _numero;
+  late final TextEditingController _monto;
+  late String _tipo;
+  late DateTime _fecha;
+  String? _documentoPath; // path ya subido (edición)
+  File? _nuevoDoc; // archivo local nuevo
+  bool _saving = false;
+
+  static const _tipos = {
+    'D': 'Desayuno',
+    'A': 'Almuerzo',
+    'C': 'Cena',
+    'H': 'Hospedaje',
+    'COMBUSTIBLE': 'Combustible',
+    'OTROS': 'Otros',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existente;
+    _proveedor = TextEditingController(text: e?.proveedor ?? '');
+    _numero = TextEditingController(text: e?.numeroFactura ?? '');
+    _monto = TextEditingController(text: e != null ? e.monto.toStringAsFixed(2) : '');
+    _tipo = e?.tipo != null && _tipos.containsKey(e!.tipo) ? e.tipo : 'OTROS';
+    _fecha = e?.fecha ?? DateTime.now();
+    _documentoPath = e?.documento;
+  }
+
+  @override
+  void dispose() {
+    _proveedor.dispose();
+    _numero.dispose();
+    _monto.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDoc(ImageSource source) async {
+    final x = await ImagePicker().pickImage(source: source, imageQuality: 70);
+    if (x != null) setState(() => _nuevoDoc = File(x.path));
+  }
+
+  void _elegirOrigen() {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Tomar foto'),
+              onTap: () { Navigator.pop(context); _pickDoc(ImageSource.camera); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Elegir de galería'),
+              onTap: () { Navigator.pop(context); _pickDoc(ImageSource.gallery); },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _guardar() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+
+    // ── SIN CONEXIÓN: encolar (solo facturas nuevas; editar requiere internet) ──
+    if (widget.existente == null && !await OfflineService.instance.hayConexion()) {
+      await OfflineService.instance.enqueue(
+        type: 'factura',
+        record: {
+          'liquidacion_id': widget.liquidacionId,
+          'proveedor': _proveedor.text.trim(),
+          'numero_factura': _numero.text.trim(),
+          'tipo': _tipo,
+          'monto': parseNum(_monto.text),
+          'fecha': _fecha.toIso8601String().split('T').first,
+        },
+        photos: _nuevoDoc != null ? {'documento': _nuevoDoc!.path} : null,
+      );
+      if (mounted) {
+        Navigator.pop(context, true);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Factura guardada sin conexión. Se subirá cuando haya internet.'),
+          backgroundColor: Colors.orange,
+        ));
+      }
+      return;
+    }
+
+    try {
+      // Subir comprobante nuevo si se eligió
+      if (_nuevoDoc != null) {
+        _documentoPath = await LiquidacionesService.uploadDocumento(_nuevoDoc!.path);
+      }
+      final factura = Factura(
+        liquidacionId: widget.liquidacionId,
+        proveedor: _proveedor.text.trim(),
+        numeroFactura: _numero.text.trim(),
+        tipo: _tipo,
+        monto: parseNum(_monto.text),
+        fecha: _fecha,
+        documento: _documentoPath,
+      );
+
+      if (widget.existente == null) {
+        await LiquidacionesService.createFactura(factura);
+      } else {
+        await LiquidacionesService.updateFactura(widget.existente!.id!, factura);
+      }
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        final msg = e.toString().contains('pendiente')
+            ? 'Esta liquidación ya fue aprobada/rechazada; no se puede modificar.'
+            : e.toString().replaceAll('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).primaryColor;
+    final tieneDoc = _nuevoDoc != null || (_documentoPath != null && _documentoPath!.isNotEmpty);
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                Text(widget.existente == null ? 'Agregar factura' : 'Editar factura',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primary)),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: _tipo,
+                  decoration: const InputDecoration(labelText: 'Tipo', border: OutlineInputBorder()),
+                  items: _tipos.entries
+                      .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _tipo = v ?? 'OTROS'),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _proveedor,
+                  decoration: const InputDecoration(labelText: 'Proveedor', border: OutlineInputBorder()),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _numero,
+                  decoration: const InputDecoration(labelText: 'N° de factura', border: OutlineInputBorder()),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Requerido' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _monto,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Monto (₡)', border: OutlineInputBorder(), prefixText: '₡ '),
+                  validator: (v) {
+                    final d = double.tryParse((v ?? '').trim());
+                    if (d == null || d <= 0) return 'Monto inválido';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: () async {
+                    final d = await showDatePicker(
+                      context: context,
+                      initialDate: _fecha,
+                      firstDate: DateTime(2015),
+                      lastDate: DateTime(2100),
+                    );
+                    if (d != null) setState(() => _fecha = d);
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(labelText: 'Fecha', border: OutlineInputBorder()),
+                    child: Text('${_fecha.day}/${_fecha.month}/${_fecha.year}'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: _elegirOrigen,
+                  icon: Icon(tieneDoc ? Icons.check_circle : Icons.attach_file,
+                      color: tieneDoc ? Colors.green : primary),
+                  label: Text(tieneDoc ? 'Comprobante adjunto (cambiar)' : 'Adjuntar comprobante (opcional)'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    foregroundColor: tieneDoc ? Colors.green : primary,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _guardar,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: _saving
+                        ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : Text(widget.existente == null ? 'Agregar factura' : 'Guardar cambios',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -45,6 +45,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
 
+      if (!context.mounted) return;
       LocationPermission permission = await LocationHelper.requestPermissionWithDisclosure(context);
       if (permission == LocationPermission.denied) return;
 

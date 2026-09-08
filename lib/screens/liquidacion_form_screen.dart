@@ -3,8 +3,10 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../models/liquidacion.dart';
 import '../services/liquidaciones_service.dart';
+import '../services/offline_service.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../utils/num_parse.dart';
 
 class LiquidacionFormScreen extends StatefulWidget {
   final Liquidacion? liquidacion;
@@ -19,6 +21,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _tarjetaController = TextEditingController();
   final _personalController = TextEditingController();
+  final _descripcionController = TextEditingController();
 
   String? _selectedEmpleadoId;
   int? _selectedProyectoId;
@@ -51,6 +54,13 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
       final e = _empleados.firstWhere((e) => e.id == _selectedEmpleadoId);
       return e.nombreCompleto;
     } catch (_) {
+      // Defensa extra: si no está en la lista pero es el usuario actual, usar
+      // su nombre ya resuelto en el provider en vez de mostrar el id crudo.
+      final data = Provider.of<AppProvider>(context, listen: false).currentEmployeeData;
+      if (data != null && _selectedEmpleadoId == data['id']?.toString()) {
+        final n = '${data['nombre'] ?? ''} ${data['apellido'] ?? ''}'.trim();
+        if (n.isNotEmpty) return n;
+      }
       return 'Empleado #${_selectedEmpleadoId}';
     }
   }
@@ -507,6 +517,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
           _selectedProyectoId = widget.liquidacion!.proyectoId;
           _tarjetaController.text = widget.liquidacion!.tarjetaUlt4 ?? '';
           _personalController.text = widget.liquidacion!.personalIncluido ?? '';
+          _descripcionController.text = widget.liquidacion!.descripcion ?? '';
           _selectedDate = widget.liquidacion!.fecha;
           _selectedTipo = widget.liquidacion!.tipo;
           _facturas = widget.liquidacion!.facturas ?? [];
@@ -531,6 +542,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
         _isLoadingData = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoadingData = false);
       ScaffoldMessenger.of(
         context,
@@ -614,7 +626,37 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
         estado: 'pendiente',
         total: _calculateTotal(),
         createdAt: DateTime.now(),
+        descripcion: _descripcionController.text.trim().isEmpty
+            ? null
+            : _descripcionController.text.trim(),
       );
+
+      // ── SIN CONEXIÓN (liquidación nueva): encolar liquidación + facturas ──
+      if (widget.liquidacion == null && !await OfflineService.instance.hayConexion()) {
+        await OfflineService.instance.enqueue(
+          type: 'liquidacion',
+          record: liquidacion.toJson(),
+          children: _facturas.map((f) => {
+            'record': {
+              'proveedor': f.proveedor,
+              'numero_factura': f.numeroFactura,
+              'tipo': f.tipo,
+              'monto': f.monto,
+              'fecha': f.fecha.toIso8601String().split('T').first,
+              if (f.documento != null && f.localDocPath == null) 'documento': f.documento,
+            },
+            'photos': f.localDocPath != null ? {'documento': f.localDocPath!} : <String, String>{},
+          }).toList(),
+        );
+        if (mounted) {
+          Navigator.pop(context, true);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Liquidación guardada sin conexión. Se subirá cuando haya internet.'),
+            backgroundColor: Colors.orange,
+          ));
+        }
+        return;
+      }
 
       Liquidacion savedLiquidacion;
       if (widget.liquidacion == null) {
@@ -772,6 +814,38 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                                 );
                               },
                             ),
+                          ),
+                          const SizedBox(height: 16),
+                          // Descripción — obligatoria cuando no hay proyecto
+                          TextFormField(
+                            controller: _descripcionController,
+                            maxLines: 3,
+                            minLines: 2,
+                            maxLength: 500,
+                            textCapitalization: TextCapitalization.sentences,
+                            decoration: InputDecoration(
+                              labelText: _selectedProyectoId == null
+                                  ? 'Descripción del viático *'
+                                  : 'Descripción (opcional)',
+                              hintText: _selectedProyectoId == null
+                                  ? 'Explica qué se hizo (mínimo 15 caracteres)'
+                                  : null,
+                              border: const OutlineInputBorder(),
+                              alignLabelWithHint: true,
+                              helperText: _selectedProyectoId == null
+                                  ? 'Requerido cuando no se selecciona proyecto'
+                                  : null,
+                              helperStyle: const TextStyle(color: Colors.orange),
+                            ),
+                            validator: (v) {
+                              if (_selectedProyectoId == null) {
+                                final t = (v ?? '').trim();
+                                if (t.isEmpty) return 'Debes describir el viático o seleccionar un proyecto';
+                                if (t.length < 15) return 'Mínimo 15 caracteres (llevas ${t.length})';
+                              }
+                              return null;
+                            },
+                            onChanged: (_) => setState(() {}),
                           ),
                           const SizedBox(height: 16),
                           InkWell(
@@ -1303,25 +1377,34 @@ class _FacturaDialogState extends State<_FacturaDialog> {
     if (_formKey.currentState!.validate()) {
       setState(() => _isUploading = true);
       String? documentoPath;
+      String? localDoc;
 
       try {
         if (_localImagePath != null) {
-          documentoPath = await LiquidacionesService.uploadDocumento(
-            _localImagePath!,
-          );
+          // Con conexión: subir ya. Sin conexión: diferir (se sube al sincronizar).
+          if (await OfflineService.instance.hayConexion()) {
+            documentoPath = await LiquidacionesService.uploadDocumento(
+              _localImagePath!,
+            );
+          } else {
+            localDoc = _localImagePath;
+          }
         }
 
         final factura = Factura(
           proveedor: _proveedorController.text,
           numeroFactura: _numeroController.text,
           tipo: _selectedTipo,
-          monto: double.parse(_montoController.text),
+          monto: parseNum(_montoController.text),
           fecha: _selectedDate,
           documento: documentoPath,
+          localDocPath: localDoc,
         );
         widget.onSave(factura);
+        if (!mounted) return;
         Navigator.pop(context);
       } catch (e) {
+        if (!mounted) return;
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error al subir imagen: $e')));

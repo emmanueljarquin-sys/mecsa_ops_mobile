@@ -4,7 +4,8 @@ import 'package:geolocator/geolocator.dart';
 class LocationHelper {
   static Future<LocationPermission> requestPermissionWithDisclosure(BuildContext context) async {
     var perm = await Geolocator.checkPermission();
-    
+    if (!context.mounted) return perm;   // el widget pudo desmontarse durante el await
+
     // Only show disclosure if we don't have permission yet
     if (perm == LocationPermission.denied) {
       // Show Google Play compliant prominent disclosure

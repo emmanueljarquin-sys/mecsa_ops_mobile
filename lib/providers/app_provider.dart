@@ -41,6 +41,52 @@ class AppProvider extends ChangeNotifier {
   Map<String, dynamic>?
   currentEmployeeData; // Nuevo: Datos completos del perfil
 
+  // ── Flags de acceso administrativo ─────────────────────────────
+  // El "modo Administración" en la app se muestra a quien tenga acceso
+  // a la web (OPS en sistemas_acceso). Dentro, cada acción respeta las
+  // reglas de rol que ya valida el servidor.
+  bool _isWebAdmin = false;          // ve la sección Administración
+  bool _isRoleAdmin = false;         // rol Administrador/SuperAdmin/admin
+  bool _isContabilidad = false;      // rol Contabilidad
+  bool _isResponsable = false;       // responsable de ≥1 departamento
+
+  // Vistas/módulos permitidos según rol_permisos (por ROL, igual que la web).
+  Set<String> _allowedViews = {};
+  // Permisos POR PERSONA (tokens en Empleados.sistemas_acceso, en MAYÚSCULA).
+  List<String> _sistemas = [];
+
+  bool get isWebAdmin => _isWebAdmin;
+  bool get isRoleAdmin => _isRoleAdmin;
+  bool get isContabilidad => _isContabilidad;
+  bool get isResponsable => _isResponsable;
+
+  /// ¿El usuario puede ver un módulo?
+  /// - Admin (Administrador/SuperAdmin) ve todo.
+  /// - Por ROL: si rol_permisos del rol tiene el slug (página Roles).
+  /// - Por PERSONA: si sistemas_acceso tiene el token (slug en MAYÚSCULA, página Usuarios).
+  bool canViewModule(String slug) =>
+      _isRoleAdmin ||
+      _allowedViews.contains(slug) ||
+      _sistemas.contains(slug.toUpperCase());
+
+  /// Módulo de Auditorías de Vehículos (permiso 'auditorias' en rol_permisos).
+  bool get canAudit => canViewModule('auditorias');
+
+  // ── Funciones del modo Administración ───────────────────────────────────
+  // Admin (Administrador/SuperAdmin) ve todo. El resto solo si tiene el
+  // permiso configurado por rol en la web (rol_permisos), igual que Auditorías.
+  // Excepción: liquidaciones también las ven contabilidad y responsables
+  // (los responsables solo las de su departamento — lo valida el servidor).
+  bool get canApproveLiquidaciones =>
+      _isRoleAdmin || _isContabilidad || _isResponsable || _allowedViews.contains('aprobar_liquidaciones');
+  bool get canApproveReservas => canViewModule('aprobar_reservas');
+  bool get canProcesarCorrecciones => canViewModule('procesar_correcciones');
+  bool get canDesbloquear => canViewModule('desbloquear_reservas');
+
+  /// ¿Tiene al menos una función administrativa? (para mostrar el botón).
+  bool get hasAdminAccess =>
+      canApproveLiquidaciones || canApproveReservas || canProcesarCorrecciones || canDesbloquear;
+
   RealtimeChannel? _liquidacionesChannel;
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
@@ -69,7 +115,7 @@ class AppProvider extends ChangeNotifier {
       final res = await _supabase
           .from('Empleados')
           .select('id, codigo_empleado, nombre, apellido, email, telefono, activo, photo, id_rol, fcm_token, rol, chat_role, sistemas_acceso, departamento')
-          .eq('email', user!.email!)
+          .ilike('email', user!.email!)
           .maybeSingle();
 
       if (res != null) {
@@ -79,9 +125,59 @@ class AppProvider extends ChangeNotifier {
         }
         currentEmployeeId = res['id'].toString();
         currentEmployeeData = res;
+
+        // ── Calcular flags administrativos ──
+        final rol = (res['rol'] ?? '').toString().toLowerCase().trim();
+        _isRoleAdmin = ['administrador', 'admin', 'superadmin', 'superadministrador']
+            .contains(rol);
+        _isContabilidad = rol == 'contabilidad';
+
+        final List sistemas = (res['sistemas_acceso'] as List?) ?? [];
+        // Permisos POR PERSONA (tokens en sistemas_acceso, ej. 'AUDITORIAS').
+        _sistemas = sistemas.map((e) => e.toString().toUpperCase()).toList();
+        // Acceso a la web = tiene OPS entre sus sistemas
+        _isWebAdmin = sistemas.contains('OPS') || _isRoleAdmin;
+
+        // ¿Es responsable de algún departamento de viáticos?
+        try {
+          final resp = await _supabase
+              .from('viaticos_responsables_departamento')
+              .select('id')
+              .eq('empleado_id', currentEmployeeId as Object)
+              .limit(1);
+          _isResponsable = (resp as List).isNotEmpty;
+        } catch (_) {
+          _isResponsable = false;
+        }
+
+        // Permisos por módulo del rol (mismo origen que la web: rol_permisos).
+        try {
+          final rolName = (res['rol'] ?? '').toString();
+          if (rolName.isNotEmpty) {
+            final perms = await _supabase
+                .from('rol_permisos')
+                .select('vista_slug, puede_ver')
+                .eq('rol_nombre', rolName);
+            _allowedViews = {
+              for (final p in perms as List)
+                if (p['puede_ver'] == true) p['vista_slug'].toString()
+            };
+          } else {
+            _allowedViews = {};
+          }
+        } catch (_) {
+          _allowedViews = {};
+        }
+
         notifyListeners();
       } else {
         // No employee found, currentEmployeeId remains null
+        _isWebAdmin = false;
+        _isRoleAdmin = false;
+        _isContabilidad = false;
+        _isResponsable = false;
+        _allowedViews = {};
+        _sistemas = [];
       }
     } catch (e) {
       debugPrint("Error fetching employee ID: $e");
@@ -257,7 +353,7 @@ class AppProvider extends ChangeNotifier {
         final empRes = await _supabase
             .from('Empleados')
             .select('activo')
-            .eq('email', email)
+            .ilike('email', email)
             .maybeSingle();
 
         if (empRes != null && empRes['activo'] == false) {
@@ -321,31 +417,7 @@ class AppProvider extends ChangeNotifier {
       errorMessage = null;
       notifyListeners();
 
-      // 1. Obtener el último código de empleado para el correlativo (GM-XXX)
-      final lastEmployee = await _supabase
-          .from('Empleados')
-          .select('codigo_empleado')
-          .like('codigo_empleado', 'GM-%')
-          .order('id', ascending: false)
-          .limit(1)
-          .maybeSingle();
-
-      int nextCode = 1;
-      if (lastEmployee != null && lastEmployee['codigo_empleado'] != null) {
-        final lastCodeStr = lastEmployee['codigo_empleado'].toString();
-        // Extraer número después del prefijo GM-
-        final parts = lastCodeStr.split('-');
-        if (parts.length > 1) {
-          final numberPart = parts.last;
-          final lastCodeNum = int.tryParse(numberPart);
-          if (lastCodeNum != null) {
-            nextCode = lastCodeNum + 1;
-          }
-        }
-      }
-      final String codigoEmpleado = "GM-${nextCode.toString().padLeft(3, '0')}";
-
-      // 2. Registrar en auth.users
+      // 1. Registrar en auth.users
       final response = await _supabase.auth.signUp(
         email: email,
         password: password,
@@ -353,35 +425,62 @@ class AppProvider extends ChangeNotifier {
       );
 
       if (response.user == null) throw "Error al crear usuario en Auth";
+      final String userId = response.user!.id;
 
-      // 3. Subir foto solo si se proporciona
+      // 2. Subir foto solo si se proporciona
       String? photoUrl;
       if (photoFile != null) {
-        final fileExt = photoFile.path.split('.').last;
-        final fileName =
-            'register_${response.user!.id}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-        final filePath = 'temp_registration/$fileName';
+        try {
+          final fileExt = photoFile.path.split('.').last;
+          final fileName =
+              'register_${userId}_${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+          final filePath = 'temp_registration/$fileName';
 
-        await _supabase.storage.from('empleados').upload(filePath, photoFile);
-        photoUrl = _supabase.storage.from('empleados').getPublicUrl(filePath);
+          await _supabase.storage.from('empleados').upload(filePath, photoFile);
+          photoUrl = _supabase.storage.from('empleados').getPublicUrl(filePath);
+        } catch (e) {
+          debugPrint("Upload foto falló (sigo sin foto): $e");
+        }
       }
 
-      // 4. Crear registro en la tabla Empleados
-      await _supabase.from('Empleados').insert({
-        'codigo_empleado': codigoEmpleado,
-        'nombre': nombre,
-        'apellido': apellido,
-        'email': email,
-        'telefono': telefono,
-        'departamento': departamentoId,
-        'empresa_id': empresaId,
-        'id_user': response.user!.id,
-        'activo': false,
-        if (photoUrl != null) 'photo': photoUrl,
-      });
+      // 3. Crear el Empleado vía endpoint PHP (usa service_role para saltar RLS).
+      //    NOTA: hacer el INSERT desde Flutter con el cliente del usuario recién
+      //    creado falla por RLS — el JWT aún no está confirmado/autorizado para
+      //    INSERT en Empleados. El endpoint corre con service_role, autorizado.
+      final empResp = await http.post(
+        Uri.parse('https://grupomecsa.net/ops/api/register_employee_mobile.php'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'id_user'     : userId,
+          'nombre'      : nombre,
+          'apellido'    : apellido,
+          'email'       : email,
+          'telefono'    : telefono,
+          'departamento': departamentoId,
+          'empresa_id'  : empresaId,
+          if (photoUrl != null) 'photo': photoUrl,
+        }),
+      );
 
-      // Importante: Cerrar sesión inmediatamente para que no entre a la App
-      // hasta que el administrador lo apruebe.
+      Map<String, dynamic> empBody;
+      try {
+        empBody = jsonDecode(empResp.body) as Map<String, dynamic>;
+      } catch (_) {
+        empBody = {'success': false, 'error': 'Respuesta inválida del servidor'};
+      }
+
+      if (empResp.statusCode < 200 || empResp.statusCode >= 300 ||
+          empBody['success'] != true) {
+        // El INSERT en Empleados falló. El auth user ya está creado, pero
+        // sin Empleado asociado. Cerramos sesión y reportamos el error
+        // claro al usuario para que reintente o contacte soporte.
+        await _supabase.auth.signOut();
+        throw empBody['error']?.toString() ??
+            "No se pudo crear el registro de empleado (HTTP ${empResp.statusCode})";
+      }
+
+      // 4. Cerrar sesión inmediatamente para que no entre a la App
+      //    hasta que el administrador lo apruebe.
       await _supabase.auth.signOut();
 
       return true;
@@ -458,6 +557,23 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  /// Refresco SILENCIOSO (sin spinner de pantalla completa). Se llama al volver
+  /// la app a primer plano para reflejar cambios hechos desde la web —p.ej. una
+  /// reserva que ya fue aprobada— sin interrumpir lo que el usuario está viendo.
+  Future<void> refreshSilent() async {
+    if (user == null || currentEmployeeId == null) return;
+    try {
+      await Future.wait([
+        _fetchMyReservations(),
+        _fetchViaticos(),
+        _fetchRutas(),
+      ]);
+      notifyListeners();
+    } catch (e) {
+      debugPrint("refreshSilent error: $e");
+    }
+  }
+
   Future<void> _fetchMyReservations() async {
     try {
       if (currentEmployeeId == null) return;
@@ -471,9 +587,19 @@ class AppProvider extends ChangeNotifier {
           .from('reservas')
           .select('*, vehiculos(*)')
           .eq('empleado_id', currentEmployeeId!)
-          .order('fecha_salida', ascending: true);
+          .order('fecha_salida', ascending: false);
 
-      myReservations = List<Map<String, dynamic>>.from(res);
+      // Mostrar próximas + recientes (últimos 60 días). Antes el filtro era
+      // fecha_regreso > now, que ocultaba ~93% de las reservas: casi todas son
+      // del mismo día y desaparecían al pasar la hora de regreso, así que los
+      // usuarios "no veían las reservas hechas por ellos".
+      final cutoff = DateTime.now().subtract(const Duration(days: 60));
+      myReservations = List<Map<String, dynamic>>.from(res)
+          .where((r) {
+            final fechaRegreso = DateTime.tryParse(r['fecha_regreso'] ?? '');
+            return fechaRegreso == null || fechaRegreso.isAfter(cutoff);
+          })
+          .toList();
 
       // Post-process to ensure clean structure similar to vehicle list if needed
       // but simpler to just pass raw Map to UI.
@@ -486,8 +612,14 @@ class AppProvider extends ChangeNotifier {
             .from('reservas')
             .select()
             .eq('empleado_id', currentEmployeeId!)
-            .order('fecha_salida', ascending: true);
-        myReservations = List<Map<String, dynamic>>.from(res);
+            .order('fecha_salida', ascending: false);
+        final cutoff = DateTime.now().subtract(const Duration(days: 60));
+        myReservations = List<Map<String, dynamic>>.from(res)
+            .where((r) {
+              final fechaRegreso = DateTime.tryParse(r['fecha_regreso'] ?? '');
+              return fechaRegreso == null || fechaRegreso.isAfter(cutoff);
+            })
+            .toList();
       } catch (e2) {
         print("Fallback failed: $e2");
       }
@@ -971,6 +1103,55 @@ class AppProvider extends ChangeNotifier {
         }
       } // NEW
 
+      // ── BLOQUEO POR STRIKES ─────────────────────────────────────────
+      // Antes de permitir la reserva, aplicar bloqueo si corresponde
+      // y luego validar el flag. Esto auto-bloquea a quien acumuló 3+
+      // reservas vencidas sin registro y rechaza la nueva reserva.
+      //
+      // IMPORTANTE: si un admin desbloqueó manualmente al empleado, se le
+      // pone la etiqueta 'RESERVAS_EXCEPCION' en sistemas_acceso. En ese
+      // caso NO reejecutamos el RPC (que volvería a bloquearlo por las
+      // reservas viejas sin registrar). Sin este chequeo, desbloquear desde
+      // la web no tenía efecto porque el mobile re-bloqueaba al instante.
+      try {
+        // Leer flag actual + sistemas_acceso en una sola consulta
+        final empCheck = await _supabase
+            .from('Empleados')
+            .select('reservas_bloqueado, sistemas_acceso')
+            .eq('id', currentEmployeeId as Object)
+            .maybeSingle();
+
+        final List sistemas = (empCheck?['sistemas_acceso'] as List?) ?? [];
+        final bool tieneExcepcion = sistemas.contains('RESERVAS_EXCEPCION');
+
+        if (!tieneExcepcion) {
+          // Solo re-evaluar strikes si NO tiene excepción manual del admin
+          await _supabase
+              .schema('flotilla')
+              .rpc('aplicar_bloqueo_si_corresponde',
+                  params: {'p_empleado_id': currentEmployeeId});
+
+          final recheck = await _supabase
+              .from('Empleados')
+              .select('reservas_bloqueado')
+              .eq('id', currentEmployeeId as Object)
+              .maybeSingle();
+
+          if (recheck != null && recheck['reservas_bloqueado'] == true) {
+            throw "Tu cuenta está bloqueada para hacer reservas. "
+                "Acumulaste 3 o más reservas sin registrar salida. "
+                "Contacta al administrador para desbloquear.";
+          }
+        }
+        // Si tiene excepción, se le permite reservar sin re-evaluar.
+      } catch (e) {
+        if (e is String) rethrow;
+        // Si la RPC falla por permisos u otra razón, no bloqueamos
+        // creación: priorizar operatividad sobre la regla nueva.
+        debugPrint("aplicar_bloqueo_si_corresponde falló (continuo): $e");
+      }
+      // ─────────────────────────────────────────────────────────────────
+
       final String vehiculoId = reservationData['vehiculo_id'].toString();
       final String startStr = reservationData['fecha_salida'];
       final String endStr = reservationData['fecha_regreso'];
@@ -1030,6 +1211,148 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  /// Cancela una reserva propia. Solo el solicitante y solo si:
+  /// - estado in (Pendiente, Aprobada)
+  /// - fecha_salida es futura
+  /// - no hay registro de salida todavía
+  /// Las validaciones de propietario/estado se hacen aquí pero el UI debe
+  /// gatear el botón para no llegar nunca a llamar esto en escenarios inválidos.
+  Future<bool> cancelarReserva({
+    required String reservaId,
+    String motivo = '',
+  }) async {
+    try {
+      isLoading = true;
+      errorMessage = null;
+      notifyListeners();
+
+      // Carga la reserva para validar estado y propietario
+      final r = await _supabase
+          .schema('flotilla')
+          .from('reservas')
+          .select('id, estado, fecha_salida, empleado_id')
+          .eq('id', reservaId)
+          .maybeSingle();
+
+      if (r == null) throw "Reserva no encontrada";
+
+      final String estado = (r['estado'] ?? '').toString();
+      final String estadoUpper = estado.toUpperCase();
+      if (estadoUpper.contains('CANCEL') ||
+          estadoUpper.contains('RECHAZ') ||
+          estadoUpper.contains('COMPLET')) {
+        throw "Esta reserva ya está $estado";
+      }
+
+      final fechaSalida = DateTime.tryParse(r['fecha_salida']?.toString() ?? '');
+      if (fechaSalida != null && fechaSalida.isBefore(DateTime.now())) {
+        throw "No se puede cancelar: la salida ya pasó";
+      }
+
+      if (currentEmployeeId == null || r['empleado_id'] != currentEmployeeId) {
+        throw "Solo el solicitante puede cancelar esta reserva";
+      }
+
+      // ¿Ya hay registro de salida? Si sí, no se puede cancelar.
+      final regs = await _supabase
+          .schema('flotilla')
+          .from('registros_vehiculos')
+          .select('id, tipo')
+          .eq('reserva_id', reservaId);
+      final tieneSalida =
+          (regs as List).any((x) => (x['tipo'] ?? '').toString().toLowerCase() == 'salida');
+      if (tieneSalida) {
+        throw "Ya iniciaste el viaje, no se puede cancelar";
+      }
+
+      // PATCH
+      await _supabase.schema('flotilla').from('reservas').update({
+        'estado': 'Cancelada',
+        'comentarios': motivo.isNotEmpty
+            ? 'Cancelada por el solicitante: $motivo'
+            : 'Cancelada por el solicitante',
+      }).eq('id', reservaId);
+
+      // Refresh
+      await Future.wait([
+        _fetchFlotilla(),
+        _fetchMyReservations(),
+      ]);
+
+      return true;
+    } catch (e) {
+      debugPrint("Error cancelando reserva: $e");
+      errorMessage = e.toString();
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Solicita una corrección sobre un registro ya guardado (viáticos o kilometraje).
+  ///
+  /// El empleado NO puede editar directamente el registro; solo puede escribir
+  /// qué necesita corregirse. El registro cambia de estado y el admin lo revisa
+  /// en la web. Aplica a:
+  ///   - schema='viaticos' + table='liquidaciones'
+  ///   - schema='flotilla' + table='registros_vehiculos'
+  Future<bool> solicitarCorreccion({
+    required String schema,
+    required String table,
+    required String recordId,
+    required String motivo,
+  }) async {
+    try {
+      isLoading = true;
+      errorMessage = null;
+      notifyListeners();
+
+      final texto = motivo.trim();
+      if (texto.isEmpty) {
+        throw "Debes escribir qué necesita corregirse";
+      }
+      if (texto.length < 8) {
+        throw "El motivo es muy corto (mínimo 8 caracteres)";
+      }
+
+      // Verificar el registro existe y no tiene ya solicitud activa
+      final r = await _supabase
+          .schema(schema)
+          .from(table)
+          .select('id, estado, solicitud_correccion, empleado_id')
+          .eq('id', recordId)
+          .maybeSingle();
+      if (r == null) throw "Registro no encontrado";
+
+      final estadoActual = (r['estado'] ?? '').toString();
+      if (estadoActual.toLowerCase().contains('correccion solicitada') ||
+          estadoActual.toLowerCase().contains('en revisi')) {
+        throw "Ya hay una solicitud de corrección pendiente para este registro";
+      }
+      if (r['empleado_id'] != null &&
+          currentEmployeeId != null &&
+          r['empleado_id'] != currentEmployeeId) {
+        throw "Solo el propietario del registro puede solicitar corrección";
+      }
+
+      await _supabase.schema(schema).from(table).update({
+        'solicitud_correccion': texto,
+        'fecha_correccion': DateTime.now().toUtc().toIso8601String(),
+        'estado': 'Correccion Solicitada',
+      }).eq('id', recordId);
+
+      return true;
+    } catch (e) {
+      debugPrint("Error solicitando corrección: $e");
+      errorMessage = e.toString();
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> saveVehicleRegister({
     required String reservaId,
     required String tipo,
@@ -1051,6 +1374,22 @@ class AppProvider extends ChangeNotifier {
       if (user == null) throw "No autenticado";
       if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
       if (currentEmployeeId == null) throw "No se encontró el ID de empleado";
+
+      // Idempotencia (igual que el path offline _subirRegistro): si YA existe un
+      // registro para esta reserva+tipo (no rechazado), NO duplicar → devolver éxito.
+      // Evita registros dobles cuando se pierde la respuesta y el usuario reintenta.
+      try {
+        final ya = await _supabase
+            .schema('flotilla')
+            .from('registros_vehiculos')
+            .select('id')
+            .eq('reserva_id', reservaId)
+            .eq('tipo', tipo)
+            .neq('estado', 'Rechazado')
+            .limit(1)
+            .timeout(const Duration(seconds: 15));
+        if ((ya as List).isNotEmpty) return true;
+      } catch (_) { /* si el chequeo falla por red, seguimos e intentamos igual */ }
 
       // 1. Upload photos in parallel
       final Map<String, String> photoUrls = {};
@@ -1105,14 +1444,78 @@ class AppProvider extends ChangeNotifier {
       await _supabase
           .schema('flotilla')
           .from('registros_vehiculos')
-          .insert(data);
+          .insert(data)
+          .timeout(const Duration(seconds: 30));
 
-      // Refresh data
-      await fetchData();
+      // El registro YA quedó guardado. Refrescar en SEGUNDO PLANO (sin await):
+      // fetchData() no tiene timeouts y con mala señal se colgaba, dejando la UI
+      // atascada en "Subiendo" aunque la salida/entrada ya se había guardado.
+      fetchData().catchError((_) {});
       return true;
     } catch (e) {
       debugPrint("Error saving vehicle register: $e");
       errorMessage = "Error al guardar registro: $e";
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Registro MANUAL de respaldo: cuando el registro normal falla o se cuelga,
+  /// el empleado envía un comentario + las fotos que pudo. Queda 'Pendiente' de
+  /// aprobación en la web. Best-effort: si una foto no sube, igual se envía.
+  Future<bool> saveVehicleRegisterManual({
+    required String reservaId,
+    required String tipo,
+    required String comentario,
+    required Map<String, dynamic> localPhotos,
+    double? kilometraje,
+  }) async {
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      if (user == null) throw "No autenticado";
+      if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
+      if (currentEmployeeId == null) throw "No se encontró el ID de empleado";
+
+      // Subir las fotos que se pueda (sin abortar si alguna falla)
+      final Map<String, String> photoUrls = {};
+      for (final entry in localPhotos.entries) {
+        if (entry.value == null) continue;
+        try {
+          final url = await _uploadRegisterPhoto(entry.value, entry.key, reservaId);
+          if (url != null) photoUrls["foto_${entry.key}"] = url;
+        } catch (e) {
+          debugPrint("Foto ${entry.key} no subió (registro manual, continúo): $e");
+        }
+      }
+
+      final Map<String, dynamic> data = {
+        'reserva_id': reservaId,
+        'empleado_id': currentEmployeeId,
+        'tipo': tipo,
+        'estado': 'Pendiente',
+        'es_manual': true,
+        'comentario': comentario,
+        if (kilometraje != null) 'kilometraje': kilometraje,
+        ...photoUrls,
+      };
+
+      await _supabase
+          .schema('flotilla')
+          .from('registros_vehiculos')
+          .insert(data)
+          .timeout(const Duration(seconds: 30));
+
+      // Guardado OK. Refresco en segundo plano (misma razón que saveVehicleRegister:
+      // evitar que fetchData() sin timeout cuelgue la UI en "Subiendo").
+      fetchData().catchError((_) {});
+      return true;
+    } catch (e) {
+      debugPrint("Error saving manual vehicle register: $e");
+      errorMessage = "Error al enviar registro manual: $e";
       return false;
     } finally {
       isLoading = false;
@@ -1136,7 +1539,8 @@ class AppProvider extends ChangeNotifier {
 
       await _supabase.storage
           .from('fotos_registro_vehiculos')
-          .upload(path, file);
+          .upload(path, file)
+          .timeout(const Duration(seconds: 40)); // evita que se quede colgado
 
       return fileName;
     } catch (e) {

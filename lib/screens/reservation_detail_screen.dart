@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:printing/printing.dart';
+import 'package:gal/gal.dart';
 import '../providers/app_provider.dart';
+import '../services/ruta_pdf_service.dart';
+import '../widgets/correccion_widgets.dart';
 import 'vehicle_register_screen.dart';
 import 'trip_nav_screen.dart';
 
@@ -151,6 +155,14 @@ class ReservationDetailScreen extends StatelessWidget {
                     _buildRegistrationButtons(context),
                     const SizedBox(height: 30),
                   ],
+
+                  // --- Botón Cancelar Reserva: solo si futura y aún cancelable ---
+                  if ((estado == 'PENDIENTE' || estado.contains('APROB')) &&
+                      _puedeCancelar(reservation)) ...[
+                    _buildCancelButton(context),
+                    const SizedBox(height: 24),
+                  ],
+
                   _buildSectionTitle("ITINERARIO"),
                   const SizedBox(height: 12),
                   _buildInfoRow(
@@ -166,6 +178,26 @@ class ReservationDetailScreen extends StatelessWidget {
                     _formatDate(reservation['fecha_regreso']),
                     color: Colors.green,
                   ),
+
+                  // Horas de control (para el colaborador que hizo la reserva)
+                  if (reservation['created_at'] != null) ...[
+                    const SizedBox(height: 12),
+                    _buildInfoRow(
+                      Icons.event_available,
+                      "Reservada el",
+                      _formatDate(reservation['created_at']?.toString()),
+                      color: Colors.indigo,
+                    ),
+                  ],
+                  if (reservation['fecha_aprobacion'] != null) ...[
+                    const SizedBox(height: 12),
+                    _buildInfoRow(
+                      Icons.verified,
+                      "Aprobada el",
+                      _formatDate(reservation['fecha_aprobacion']?.toString()),
+                      color: Colors.teal,
+                    ),
+                  ],
 
                   const SizedBox(height: 30),
 
@@ -264,6 +296,307 @@ class ReservationDetailScreen extends StatelessWidget {
       ),
     );
   }
+
+  // ────────────────────────────────────────────────────────────
+  // Cancelar reserva
+  // ────────────────────────────────────────────────────────────
+  bool _puedeCancelar(Map<String, dynamic> r) {
+    final fs = DateTime.tryParse(r['fecha_salida']?.toString() ?? '');
+    if (fs == null) return false;
+    return fs.isAfter(DateTime.now());
+  }
+
+  Widget _buildCancelButton(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => _confirmCancel(context),
+        icon: const Icon(Icons.cancel_outlined, color: Colors.red),
+        label: const Text(
+          "CANCELAR RESERVA",
+          style: TextStyle(
+            color: Colors.red,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          side: const BorderSide(color: Colors.red, width: 1.5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmCancel(BuildContext context) async {
+    final motivoCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("¿Cancelar reserva?"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "Esta acción no se puede deshacer. ¿Por qué la cancelas?",
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: motivoCtrl,
+              decoration: const InputDecoration(
+                labelText: "Motivo (opcional)",
+                border: OutlineInputBorder(),
+              ),
+              maxLength: 200,
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Volver"),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Sí, cancelar"),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true || !context.mounted) return;
+
+    final provider = context.read<AppProvider>();
+    final success = await provider.cancelarReserva(
+      reservaId: reservation['id'].toString(),
+      motivo: motivoCtrl.text.trim(),
+    );
+
+    if (!context.mounted) return;
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Reserva cancelada"),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pop(context); // volver al listado
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(provider.errorMessage ?? "No se pudo cancelar"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ----- Exportar registro de ruta: PDF + guardar fotos al carrete -----
+
+  Widget _buildExportButtons(
+    BuildContext context, {
+    required Map<String, dynamic> regSalida,
+    required Map<String, dynamic> regEntrada,
+    required double kmSalida,
+    required double kmEntrada,
+    required double kmTotal,
+    required DateTime tSalida,
+    required DateTime tEntrada,
+    required String duracion,
+  }) {
+    return Column(
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _exportarPdf(
+              context,
+              regSalida: regSalida,
+              regEntrada: regEntrada,
+              kmSalida: kmSalida,
+              kmEntrada: kmEntrada,
+              kmTotal: kmTotal,
+              tSalida: tSalida,
+              tEntrada: tEntrada,
+              duracion: duracion,
+            ),
+            icon: const Icon(Icons.picture_as_pdf, size: 18),
+            label: const Text("DESCARGAR PDF DE LA VISITA"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF013483),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _guardarFotos(context, regSalida, regEntrada),
+            icon: const Icon(Icons.download, size: 18),
+            label: const Text("GUARDAR FOTOS EN LA GALERÍA"),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF013483),
+              side: const BorderSide(color: Color(0xFF013483)),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _exportarPdf(
+    BuildContext context, {
+    required Map<String, dynamic> regSalida,
+    required Map<String, dynamic> regEntrada,
+    required double kmSalida,
+    required double kmEntrada,
+    required double kmTotal,
+    required DateTime tSalida,
+    required DateTime tEntrada,
+    required String duracion,
+  }) async {
+    final messenger = ScaffoldMessenger.of(context);
+    _mostrarCargando(context, "Generando PDF…");
+    try {
+      final vehiculo =
+          reservation['vehiculos'] is Map ? reservation['vehiculos'] : {};
+      final marca = (vehiculo['marca'] ?? '').toString();
+      final modelo = (vehiculo['modelo'] ?? 'Vehículo').toString();
+      final nombreVehiculo =
+          "$marca $modelo".trim().isEmpty ? "Vehículo" : "$marca $modelo".trim();
+      final placa = (vehiculo['placa'] ?? 'Sin placa').toString();
+
+      String? conductor;
+      final emp = reservation['empleado'];
+      if (emp is Map && emp['nombre'] != null) {
+        conductor = emp['nombre'].toString();
+      }
+      conductor ??= reservation['empleado_nombre']?.toString();
+
+      final bytes = await RutaPdfService.construirPdf(
+        vehiculo: nombreVehiculo,
+        placa: placa,
+        destino: _destinoLegible(),
+        conductor: conductor,
+        fechaSalida: _formatDate(reservation['fecha_salida']),
+        fechaRegreso: _formatDate(reservation['fecha_regreso']),
+        motivo: (reservation['motivo'] ?? 'No especificado').toString(),
+        reservaId: reservation['id'].toString(),
+        kmSalida: kmSalida,
+        kmEntrada: kmEntrada,
+        kmTotal: kmTotal,
+        duracion: duracion,
+        horaSalida: _hora(tSalida),
+        horaEntrada: _hora(tEntrada),
+        regSalida: regSalida,
+        regEntrada: regEntrada,
+      );
+
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop(); // cerrar loading
+      }
+      final placaFile = placa.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: 'visita_${placaFile}_${reservation['id']}.pdf',
+      );
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text("No se pudo generar el PDF: $e")),
+      );
+    }
+  }
+
+  Future<void> _guardarFotos(
+    BuildContext context,
+    Map<String, dynamic> regSalida,
+    Map<String, dynamic> regEntrada,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final urls = RutaPdfService.urlsDeFotos(regSalida, regEntrada);
+    if (urls.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("No hay fotos para guardar.")),
+      );
+      return;
+    }
+
+    // Permiso de galería.
+    try {
+      if (!await Gal.hasAccess()) {
+        if (!await Gal.requestAccess()) {
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text("Se necesita permiso para guardar en la galería."),
+            ),
+          );
+          return;
+        }
+      }
+    } catch (_) {}
+
+    if (!context.mounted) {
+      return;
+    }
+    _mostrarCargando(context, "Guardando fotos…");
+    int ok = 0;
+    for (final u in urls) {
+      final bytes = await RutaPdfService.descargarBytes(u);
+      if (bytes != null) {
+        try {
+          await Gal.putImageBytes(bytes, album: 'MecsaOPS');
+          ok++;
+        } catch (_) {}
+      }
+    }
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(ok == urls.length
+            ? "$ok fotos guardadas en la galería."
+            : "$ok de ${urls.length} fotos guardadas."),
+      ),
+    );
+  }
+
+  void _mostrarCargando(BuildContext context, String msg) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 16),
+            Expanded(child: Text(msg)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _destinoLegible() {
+    final u = reservation['ubicacion']?.toString() ?? '';
+    if (u.isEmpty) return 'Sin ubicación';
+    final parts = u.split('|');
+    return parts.length > 1 ? parts[1] : u;
+  }
+
+  String _hora(DateTime d) =>
+      "${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}";
 
   Widget _buildRegistrationButtons(BuildContext context) {
     final supabase = Supabase.instance.client;
@@ -469,6 +802,96 @@ class ReservationDetailScreen extends StatelessWidget {
                       fontSize: 14,
                     ),
                   ),
+                ),
+                const Divider(height: 24),
+                _buildExportButtons(
+                  context,
+                  regSalida: regSalida,
+                  regEntrada: regEntrada,
+                  kmSalida: kmSalida,
+                  kmEntrada: kmEntrada,
+                  kmTotal: kmTotales,
+                  tSalida: tSalida,
+                  tEntrada: tEntrada,
+                  duracion: duracionStr,
+                ),
+                // Banners de solicitud ya enviada (si aplica)
+                if ((regSalida['solicitud_correccion'] ?? '').toString().isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  CorreccionBanner(
+                    motivo: "SALIDA: ${regSalida['solicitud_correccion']}",
+                    fecha: regSalida['fecha_correccion']?.toString().split('.').first,
+                    respuestaAdmin: regSalida['respuesta_admin'],
+                  ),
+                ],
+                if ((regEntrada['solicitud_correccion'] ?? '').toString().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  CorreccionBanner(
+                    motivo: "ENTRADA: ${regEntrada['solicitud_correccion']}",
+                    fecha: regEntrada['fecha_correccion']?.toString().split('.').first,
+                    respuestaAdmin: regEntrada['respuesta_admin'],
+                  ),
+                ],
+                // Botones Solicitar corrección (uno por registro, solo si no hay ya solicitud)
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    if ((regSalida['solicitud_correccion'] ?? '').toString().isEmpty)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.edit_note, size: 18, color: Colors.orange),
+                          label: const Text(
+                            "Corregir salida",
+                            style: TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.orange, width: 1.2),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          onPressed: () async {
+                            final ok = await showSolicitarCorreccionDialog(
+                              context,
+                              schema: 'flotilla',
+                              table: 'registros_vehiculos',
+                              recordId: regSalida['id'].toString(),
+                              titulo: 'Corregir kilometraje de salida',
+                            );
+                            if (ok && context.mounted) {
+                              (context as Element).markNeedsBuild();
+                            }
+                          },
+                        ),
+                      ),
+                    if ((regSalida['solicitud_correccion'] ?? '').toString().isEmpty &&
+                        (regEntrada['solicitud_correccion'] ?? '').toString().isEmpty)
+                      const SizedBox(width: 8),
+                    if ((regEntrada['solicitud_correccion'] ?? '').toString().isEmpty)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.edit_note, size: 18, color: Colors.orange),
+                          label: const Text(
+                            "Corregir entrada",
+                            style: TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.orange, width: 1.2),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          onPressed: () async {
+                            final ok = await showSolicitarCorreccionDialog(
+                              context,
+                              schema: 'flotilla',
+                              table: 'registros_vehiculos',
+                              recordId: regEntrada['id'].toString(),
+                              titulo: 'Corregir kilometraje de entrada',
+                            );
+                            if (ok && context.mounted) {
+                              (context as Element).markNeedsBuild();
+                            }
+                          },
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),

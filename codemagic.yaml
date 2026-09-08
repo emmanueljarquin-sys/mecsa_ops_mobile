@@ -1,4 +1,42 @@
 workflows:
+  # Build Android AAB solo (para actualizaciones rápidas a Play Store,
+  # sin necesidad de mac_mini para iOS)
+  android-release:
+    name: android_aab_release
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      flutter: stable
+      vars:
+        PACKAGE_NAME: "net.grupomecsa.opsapp"
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+    scripts:
+      - name: Firebase Android config
+        script: |
+          echo $GOOGLE_SERVICES_JSON_ANDROID | base64 --decode > android/app/google-services.json
+      - name: Flutter deps
+        script: flutter pub get
+      - name: Generate icons
+        script: dart run flutter_launcher_icons
+      - name: Build AAB
+        script: flutter build appbundle --release --no-codesign
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
+      - build/app/outputs/mapping/release/mapping.txt
+    publishing:
+      email:
+        recipients:
+          - emmanuel.jarquin@grupomecsa.com
+        notify:
+          success: true
+          failure: true
+
+  # Build completo iOS + Android para releases oficiales
   ios-android-release:
     name: release_workflow
     max_build_duration: 120

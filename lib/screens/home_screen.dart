@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -11,6 +12,9 @@ import 'visitas_screen.dart';
 import 'visita_detail_screen.dart';
 import 'profile_screen.dart';
 import 'live_map_screen.dart';
+import 'admin/admin_hub_screen.dart';
+import 'auditorias/auditorias_list_screen.dart';
+import '../services/offline_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,12 +23,13 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _didShowOptionalUpdate = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // La inicialización se hace después del primer frame para tener acceso al provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = Provider.of<AppProvider>(context, listen: false);
@@ -32,6 +37,22 @@ class _HomeScreenState extends State<HomeScreen> {
         _initFCMListeners();
       }
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Al volver a primer plano, refrescar en silencio para reflejar cambios
+    // hechos desde la web (p. ej. una reserva ya aprobada).
+    if (state == AppLifecycleState.resumed && mounted) {
+      Provider.of<AppProvider>(context, listen: false).refreshSilent();
+    }
   }
 
   void _initFCMListeners() {
@@ -202,7 +223,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       }
                     },
                     child: const Text(
-                      "DESCARGAR E INSTALAR",
+                      "ACTUALIZAR EN PLAY STORE",
                       style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
                     ),
                   ),
@@ -276,8 +297,18 @@ class DashboardTab extends StatelessWidget {
     // 3. Próxima Reserva
     Map<String, dynamic>? nextReservation;
     if (provider.myReservations.isNotEmpty) {
-      // Asumimos que vienen ordenadas por fecha desde la API
-      nextReservation = provider.myReservations.first;
+      // Asumimos que vienen ordenadas por fecha desde la API (ascendente)
+      // Buscamos la primera que no esté cancelada, rechazada o completada
+      try {
+        nextReservation = provider.myReservations.firstWhere((r) {
+          final estado = (r['estado'] ?? '').toString().toUpperCase();
+          return !estado.contains('CANCEL') &&
+              !estado.contains('RECHAZ') &&
+              !estado.contains('COMPLET');
+        });
+      } catch (_) {
+        nextReservation = null;
+      }
     }
 
     return RefreshIndicator(
@@ -291,14 +322,10 @@ class DashboardTab extends StatelessWidget {
             // 1. Custom Header
             Row(
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.asset(
-                    'assets/images/logo_mecsa_ops.jpg',
-                    width: 40,
-                    height: 40,
-                    fit: BoxFit.cover,
-                  ),
+                SvgPicture.asset(
+                  'assets/images/ops_icon_color.svg',
+                  width: 40,
+                  height: 40,
                 ),
                 const SizedBox(width: 12),
                 const Text(
@@ -310,6 +337,19 @@ class DashboardTab extends StatelessWidget {
                   ),
                 ),
                 const Spacer(),
+                // Botón Administración (solo si tiene alguna función admin)
+                if (provider.hasAdminAccess) ...[
+                  IconButton(
+                    tooltip: 'Administración',
+                    icon: Icon(Icons.admin_panel_settings,
+                        size: 26, color: Theme.of(context).primaryColor),
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AdminHubScreen()),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 Stack(
                   children: [
                     const Icon(
@@ -433,7 +473,42 @@ class DashboardTab extends StatelessWidget {
             ),
   
             const SizedBox(height: 24),
-  
+
+            // Pendientes de sincronizar (offline)
+            Consumer<OfflineService>(
+              builder: (_, offline, __) {
+                if (offline.pendingCount == 0) return const SizedBox.shrink();
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(offline.isFlushing ? Icons.sync : Icons.cloud_upload_outlined,
+                          color: Colors.orange.shade800),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          offline.isFlushing
+                              ? 'Subiendo ${offline.pendingCount} pendiente(s)…'
+                              : '${offline.pendingCount} pendiente(s) de subir (sin conexión)',
+                          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.orange.shade900),
+                        ),
+                      ),
+                      if (offline.isFlushing)
+                        const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      else
+                        TextButton(onPressed: () => offline.flush(), child: const Text('Sincronizar')),
+                    ],
+                  ),
+                );
+              },
+            ),
+
             // 3. Main Action Buttons
             Row(
               children: [
@@ -465,11 +540,32 @@ class DashboardTab extends StatelessWidget {
                 ),
               ],
             ),
-  
-            const SizedBox(height: 16),
+
+            // 3.1 Auditoría de Vehículo (solo con permiso al módulo 'auditorias')
+            if (provider.canAudit) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _MainActionButton(
+                      icon: Icons.fact_check_outlined,
+                      label: "Auditoría de Vehículo",
+                      color: Colors.white,
+                      textColor: const Color(0xFF212529),
+                      borderColor: Colors.grey[200],
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const AuditoriasListScreen()),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
 
             const SizedBox(height: 24),
-  
+
             // 3.5 NUEVA ZONA: CHAT CRM (Solo Admin y Vendedor)
             if (emp != null && (() {
               final r = (emp['rol'] ?? '').toString().toLowerCase();
