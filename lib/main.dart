@@ -1,11 +1,16 @@
+import 'dart:io' show Platform;
+import 'dart:ui' show PlatformDispatcher;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'theme/app_theme.dart';
 import 'providers/app_provider.dart';
+import 'services/app_logger.dart';
 import 'services/offline_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -20,6 +25,33 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es_MX', null);
 
+  // Registro de actividad local (SQLite). No bloquear el arranque si falla.
+  String appVersion = '?';
+  try {
+    final info = await PackageInfo.fromPlatform();
+    appVersion = '${info.version}+${info.buildNumber}';
+  } catch (_) {}
+  try {
+    await AppLogger.instance.init(appVersion: appVersion);
+  } catch (e) {
+    print("AppLogger init failed: $e");
+  }
+  log.i('app', 'Arranque', data: {
+    'version': appVersion,
+    'os': Platform.operatingSystem,
+    'osVersion': Platform.operatingSystemVersion,
+  });
+  // Errores no capturados (Flutter y Dart) quedan en el registro.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    log.e('app', 'Error de Flutter no capturado',
+        error: details.exceptionAsString(), stack: details.stack);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    log.e('app', 'Error no capturado', error: error, stack: stack);
+    return false; // dejar que el manejo por defecto continúe
+  };
+
   await Supabase.initialize(
     url: 'https://awhuzekjpoapamijlvua.supabase.co',
     anonKey:
@@ -31,16 +63,17 @@ void main() async {
     await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     firebaseAvailable = true;
-    print("Firebase inicializado correctamente");
-  } catch (e) {
-    print("Firebase initialization failed: $e");
+    log.i('app', 'Firebase inicializado');
+  } catch (e, st) {
+    log.w('app', 'Firebase no disponible', error: e);
+    print("Firebase initialization failed: $e\n$st");
   }
 
   // Cola de sincronización offline (no bloquear el arranque si falla)
   try {
     await OfflineService.instance.init();
-  } catch (e) {
-    print("OfflineService init failed: $e");
+  } catch (e, st) {
+    log.e('offline', 'OfflineService no pudo iniciar', error: e, stack: st);
   }
 
   runApp(MecsaOpsApp(firebaseAvailable: firebaseAvailable));

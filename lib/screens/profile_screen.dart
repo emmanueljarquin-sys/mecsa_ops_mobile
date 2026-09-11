@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../services/app_logger.dart';
+import 'app_log_screen.dart';
+import 'log_settings_screen.dart';
 
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
@@ -201,13 +204,53 @@ class ProfileScreen extends StatelessWidget {
               value: emp?['telefono'] ?? "No registrado",
             ),
             const Divider(),
-            const _ProfileItem(
+            _ProfileItem(
               icon: Icons.info_outline,
               title: "Versión App",
-              value: "1.0.0 (Beta)",
+              value: AppLogger.instance.appVersion ?? "—",
             ),
 
             const SizedBox(height: 32),
+            const Divider(),
+            const SizedBox(height: 8),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Registro de actividad",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Guarda en el teléfono lo que la app hace y lo que falla, para ayudar a TI a diagnosticar problemas.",
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.receipt_long_outlined, color: Colors.blue),
+              title: const Text("Ver registro"),
+              subtitle: const Text("Consultar, copiar o compartir el registro"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AppLogScreen()),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune, color: Colors.blue),
+              title: const Text("Configurar registro"),
+              subtitle: const Text("Niveles a registrar y retención"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LogSettingsScreen()),
+              ),
+            ),
+
+            const SizedBox(height: 24),
             const Divider(),
             const SizedBox(height: 8),
             const Align(

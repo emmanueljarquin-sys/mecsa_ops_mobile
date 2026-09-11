@@ -9,6 +9,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../services/app_logger.dart';
 import '../services/tracking_service.dart';
 
 class AppProvider extends ChangeNotifier {
@@ -172,6 +173,8 @@ class AppProvider extends ChangeNotifier {
         notifyListeners();
       } else {
         // No employee found, currentEmployeeId remains null
+        log.w('auth', 'No se encontró empleado para el correo de la sesión',
+            data: {'email': user?.email});
         _isWebAdmin = false;
         _isRoleAdmin = false;
         _isContabilidad = false;
@@ -179,8 +182,8 @@ class AppProvider extends ChangeNotifier {
         _allowedViews = {};
         _sistemas = [];
       }
-    } catch (e) {
-      debugPrint("Error fetching employee ID: $e");
+    } catch (e, st) {
+      log.e('auth', 'Falló la consulta del empleado', error: e, stack: st);
       if (e.toString().contains("desactivada")) {
         errorMessage = e.toString();
         rethrow;
@@ -200,7 +203,18 @@ class AppProvider extends ChangeNotifier {
   }
 
   void _init() {
+    log.setUser(user?.email);
+    log.i('auth', 'Provider iniciado', data: {
+      'sesionPersistida': user != null,
+      'email': user?.email,
+      'tokenExpira': _supabase.auth.currentSession?.expiresAt,
+    });
     _supabase.auth.onAuthStateChange.listen((data) {
+      log.setUser(data.session?.user.email ?? user?.email);
+      log.i('auth', 'Evento de sesión: ${data.event.name}', data: {
+        'email': data.session?.user.email,
+        'tokenExpira': data.session?.expiresAt,
+      });
       if (data.event == AuthChangeEvent.signedIn) {
         fetchData();
       } else if (data.event == AuthChangeEvent.signedOut) {
@@ -210,6 +224,9 @@ class AppProvider extends ChangeNotifier {
         _unsubscribeFromLiquidaciones(); // Clean up
         notifyListeners();
       }
+    }, onError: (e, st) {
+      log.e('auth', 'Error en el stream de sesión (posible refresh fallido)',
+          error: e, stack: st);
     });
 
     if (firebaseAvailable) {
@@ -236,6 +253,11 @@ class AppProvider extends ChangeNotifier {
           final config = data['data'];
           final minBuildNumber = config['min_version_code'] as int;
 
+          log.i('app', 'Versión verificada', data: {
+            'build': currentBuildNumber,
+            'minBuild': minBuildNumber,
+            'forceUpdate': config['force_update'],
+          });
           if (currentBuildNumber < minBuildNumber) {
             _notificationMessage =
                 config['message'] ?? "Hay una nueva versión disponible.";
@@ -244,9 +266,12 @@ class AppProvider extends ChangeNotifier {
             notifyListeners();
           }
         }
+      } else {
+        log.w('app', 'check_version respondió ${response.statusCode}');
       }
-    } catch (e) {
-      debugPrint("Error checking app version: $e");
+    } catch (e, st) {
+      log.w('app', 'No se pudo verificar la versión', error: e);
+      debugPrint("Error checking app version: $e\n$st");
     }
   }
 
@@ -363,8 +388,8 @@ class AppProvider extends ChangeNotifier {
         return true;
       }
       return false;
-    } catch (e) {
-      debugPrint("Login error: $e");
+    } catch (e, st) {
+      log.e('auth', 'Login falló', data: {'email': email}, error: e, stack: st);
       errorMessage = e.toString().contains("pendiente de activación")
           ? e.toString()
           : "Error al iniciar sesión: ${e.toString()}";
@@ -520,31 +545,43 @@ class AppProvider extends ChangeNotifier {
     isLoading = true;
     errorMessage = null;
     notifyListeners();
+    final sw = Stopwatch()..start();
+    log.i('fetchData', 'Inicio', data: {'sesion': user != null});
 
     try {
       // Siempre intentar cargar departamentos y empresas (necesario para registro)
       await Future.wait([
-        fetchDepartments(),
-        fetchCompanies(),
+        log.time('fetchData', 'departamentos', fetchDepartments),
+        log.time('fetchData', 'empresas', fetchCompanies),
       ]);
 
       if (user == null) return;
 
       // 1. First lookup Employee ID (needed for reservations/viaticos filtering)
-      await _fetchCurrentEmployeeId();
+      await log.time('fetchData', 'empleado', _fetchCurrentEmployeeId);
+      if (currentEmployeeId == null) {
+        log.w('fetchData', 'Sin currentEmployeeId: reservas y viáticos no se cargarán');
+      }
 
       // 2. Fetch all data in parallel
       await Future.wait([
-        _fetchFlotilla(),
-        _fetchViaticos(),
-        _fetchRutas(),
-        _fetchProjects(),
-        _fetchMyReservations(),
-        _fetchEmployees(),
-        fetchPersonalVehicles(),
+        log.time('fetchData', 'vehiculos', _fetchFlotilla),
+        log.time('fetchData', 'viaticos', _fetchViaticos),
+        log.time('fetchData', 'rutas', _fetchRutas),
+        log.time('fetchData', 'proyectos', _fetchProjects),
+        log.time('fetchData', 'reservas', _fetchMyReservations),
+        log.time('fetchData', 'empleados', _fetchEmployees),
+        log.time('fetchData', 'vehiculosPersonales', fetchPersonalVehicles),
       ]);
-    } catch (e) {
-      debugPrint("Error fetching data: $e");
+      log.i('fetchData', 'Completo', data: {
+        'ms': sw.elapsedMilliseconds,
+        'vehiculos': vehiculos.length,
+        'reservas': myReservations.length,
+        'proyectos': projects.length,
+      });
+    } catch (e, st) {
+      log.e('fetchData', 'Falló la carga general',
+          data: {'ms': sw.elapsedMilliseconds}, error: e, stack: st);
       if (user != null) {
         errorMessage = e.toString().contains("desactivada")
             ? e.toString()
@@ -569,8 +606,9 @@ class AppProvider extends ChangeNotifier {
         _fetchRutas(),
       ]);
       notifyListeners();
-    } catch (e) {
-      debugPrint("refreshSilent error: $e");
+    } catch (e, st) {
+      log.w('fetchData', 'refreshSilent falló', error: e);
+      debugPrint("refreshSilent error: $e\n$st");
     }
   }
 
@@ -603,8 +641,10 @@ class AppProvider extends ChangeNotifier {
 
       // Post-process to ensure clean structure similar to vehicle list if needed
       // but simpler to just pass raw Map to UI.
-    } catch (e) {
-      debugPrint("Error fetching my reservations: $e");
+    } catch (e, st) {
+      log.w('fetchData', 'Reservas con join falló; usando fallback sin join',
+          error: e);
+      debugPrint("Error fetching my reservations: $e\n$st");
       // Fallback: fetch just reservations
       try {
         final res = await _supabase
@@ -620,8 +660,9 @@ class AppProvider extends ChangeNotifier {
               return fechaRegreso == null || fechaRegreso.isAfter(cutoff);
             })
             .toList();
-      } catch (e2) {
-        print("Fallback failed: $e2");
+      } catch (e2, st2) {
+        log.e('fetchData', 'Reservas: fallback también falló',
+            error: e2, stack: st2);
       }
     }
   }
@@ -674,8 +715,8 @@ class AppProvider extends ChangeNotifier {
           })
           .toList()
           .cast<Map<String, dynamic>>();
-    } catch (e) {
-      debugPrint("Error loading flotilla: $e");
+    } catch (e, st) {
+      log.e('fetchData', 'Falló la carga de vehículos', error: e, stack: st);
       rethrow;
     }
   }
@@ -1201,8 +1242,15 @@ class AppProvider extends ChangeNotifier {
       ]);
 
       return true;
-    } catch (e) {
-      debugPrint("Error creating reservation: $e");
+    } catch (e, st) {
+      log.e('reservas', 'Crear reserva falló',
+          data: {
+            'vehiculo_id': reservationData['vehiculo_id'],
+            'fecha_salida': reservationData['fecha_salida'],
+            'fecha_regreso': reservationData['fecha_regreso'],
+          },
+          error: e,
+          stack: st);
       errorMessage = "Error al crear reserva: ${e.toString()}";
       return false;
     } finally {
@@ -1371,15 +1419,21 @@ class AppProvider extends ChangeNotifier {
       isLoading = true;
       notifyListeners();
 
+      final swTotal = Stopwatch()..start();
+      final ctx = {'reserva_id': reservaId, 'tipo': tipo, 'fotos': localPhotos.length};
+      log.i('registro', 'Guardar registro: inicio', data: ctx);
+
       if (user == null) throw "No autenticado";
-      if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
+      if (currentEmployeeId == null) {
+        await log.time('registro', 'empleado', _fetchCurrentEmployeeId, data: ctx);
+      }
       if (currentEmployeeId == null) throw "No se encontró el ID de empleado";
 
       // Idempotencia (igual que el path offline _subirRegistro): si YA existe un
       // registro para esta reserva+tipo (no rechazado), NO duplicar → devolver éxito.
       // Evita registros dobles cuando se pierde la respuesta y el usuario reintenta.
       try {
-        final ya = await _supabase
+        final ya = await log.time('registro', 'verificar duplicado', () => _supabase
             .schema('flotilla')
             .from('registros_vehiculos')
             .select('id')
@@ -1387,9 +1441,14 @@ class AppProvider extends ChangeNotifier {
             .eq('tipo', tipo)
             .neq('estado', 'Rechazado')
             .limit(1)
-            .timeout(const Duration(seconds: 15));
-        if ((ya as List).isNotEmpty) return true;
-      } catch (_) { /* si el chequeo falla por red, seguimos e intentamos igual */ }
+            .timeout(const Duration(seconds: 15)), data: ctx);
+        if ((ya as List).isNotEmpty) {
+          log.i('registro', 'Ya existía un registro; no se duplica', data: ctx);
+          return true;
+        }
+      } catch (_) {
+        // si el chequeo falla por red, seguimos e intentamos igual (ya quedó en el log)
+      }
 
       // 1. Upload photos in parallel
       final Map<String, String> photoUrls = {};
@@ -1398,7 +1457,9 @@ class AppProvider extends ChangeNotifier {
       for (var entry in localPhotos.entries) {
         if (entry.value != null) {
           uploadFutures.add(
-            _uploadRegisterPhoto(entry.value, entry.key, reservaId).then((url) {
+            log.time('registro', 'subir foto ${entry.key}',
+                () => _uploadRegisterPhoto(entry.value, entry.key, reservaId),
+                data: ctx).then((url) {
               if (url != null) {
                 photoUrls["foto_${entry.key}"] = url;
               }
@@ -1410,6 +1471,11 @@ class AppProvider extends ChangeNotifier {
       if (uploadFutures.isNotEmpty) {
         await Future.wait(uploadFutures);
       }
+      log.i('registro', 'Fotos subidas', data: {
+        ...ctx,
+        'subidas': photoUrls.length,
+        'ms': swTotal.elapsedMilliseconds,
+      });
 
       // 2. Insert record
       // Use reservaId directly as UUID string
@@ -1431,29 +1497,37 @@ class AppProvider extends ChangeNotifier {
       };
 
       // 2.5 Get current location if possible
+      final swGps = Stopwatch()..start();
       try {
         final pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
           timeLimit: const Duration(seconds: 10),
         );
         data['ubicacion'] = "${pos.latitude},${pos.longitude}";
+        log.d('registro', 'Ubicación obtenida',
+            data: {...ctx, 'ms': swGps.elapsedMilliseconds});
       } catch (e) {
-        debugPrint("Could not get registration location: $e");
+        log.w('registro', 'Sin ubicación para el registro',
+            data: {...ctx, 'ms': swGps.elapsedMilliseconds}, error: e);
       }
 
-      await _supabase
+      await log.time('registro', 'insertar registro', () => _supabase
           .schema('flotilla')
           .from('registros_vehiculos')
           .insert(data)
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 30)), data: ctx);
+
+      log.i('registro', 'Registro guardado',
+          data: {...ctx, 'kilometraje': kilometraje, 'ms': swTotal.elapsedMilliseconds});
 
       // El registro YA quedó guardado. Refrescar en SEGUNDO PLANO (sin await):
       // fetchData() no tiene timeouts y con mala señal se colgaba, dejando la UI
       // atascada en "Subiendo" aunque la salida/entrada ya se había guardado.
       fetchData().catchError((_) {});
       return true;
-    } catch (e) {
-      debugPrint("Error saving vehicle register: $e");
+    } catch (e, st) {
+      log.e('registro', 'Guardar registro falló',
+          data: {'reserva_id': reservaId, 'tipo': tipo}, error: e, stack: st);
       errorMessage = "Error al guardar registro: $e";
       return false;
     } finally {
@@ -1509,12 +1583,18 @@ class AppProvider extends ChangeNotifier {
           .insert(data)
           .timeout(const Duration(seconds: 30));
 
+      log.i('registro', 'Registro MANUAL guardado', data: {
+        'reserva_id': reservaId,
+        'tipo': tipo,
+        'fotos': photoUrls.length,
+      });
       // Guardado OK. Refresco en segundo plano (misma razón que saveVehicleRegister:
       // evitar que fetchData() sin timeout cuelgue la UI en "Subiendo").
       fetchData().catchError((_) {});
       return true;
-    } catch (e) {
-      debugPrint("Error saving manual vehicle register: $e");
+    } catch (e, st) {
+      log.e('registro', 'Registro MANUAL falló',
+          data: {'reserva_id': reservaId, 'tipo': tipo}, error: e, stack: st);
       errorMessage = "Error al enviar registro manual: $e";
       return false;
     } finally {

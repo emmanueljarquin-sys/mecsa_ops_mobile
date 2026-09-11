@@ -18,6 +18,7 @@ Documentación de arquitectura y flujos de la app móvil de operaciones de Grupo
 | 8 | [Modo offline](08-modo-offline.md) | Cola de sincronización, persistencia, reintentos, idempotencia |
 | 9 | [Modelo de datos](09-modelo-de-datos.md) | Inventario de tablas, buckets, RPCs, endpoints PHP y estados |
 | 10 | [Observaciones y deuda técnica](10-observaciones.md) | Hallazgos encontrados al documentar el código |
+| 11 | [Registro de actividad](11-registro-de-actividad.md) | Log local en SQLite, niveles configurables, visor y exportación desde Perfil |
 
 ## Cómo leer los diagramas de secuencia
 

@@ -19,6 +19,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
+import 'app_logger.dart';
+
 class OfflineService extends ChangeNotifier {
   OfflineService._();
   static final OfflineService instance = OfflineService._();
@@ -44,12 +46,16 @@ class OfflineService extends ChangeNotifier {
       final dir = await getApplicationDocumentsDirectory();
       _photosDir = '${dir.path}/offline_photos';
       await Directory(_photosDir!).create(recursive: true);
-    } catch (e) {
-      debugPrint('OfflineService: no se pudo crear carpeta de fotos: $e');
+    } catch (e, st) {
+      log.e('offline', 'No se pudo crear carpeta de fotos', error: e, stack: st);
     }
     await _load();
+    log.i('offline', 'Cola offline cargada', data: {'pendientes': _ops.length});
     Connectivity().onConnectivityChanged.listen((result) {
-      if (_online(result)) flush();
+      final online = _online(result);
+      log.i('offline', online ? 'Conectividad: red disponible' : 'Conectividad: sin red',
+          data: {'tipos': result.map((r) => r.name).toList()});
+      if (online) flush();
     });
     flush(); // intento inicial
   }
@@ -59,8 +65,13 @@ class OfflineService extends ChangeNotifier {
 
   Future<bool> hayConexion() async {
     try {
-      return _online(await Connectivity().checkConnectivity());
-    } catch (_) {
+      final r = await Connectivity().checkConnectivity();
+      final online = _online(r);
+      log.d('offline', 'hayConexion',
+          data: {'online': online, 'tipos': r.map((x) => x.name).toList()});
+      return online;
+    } catch (e) {
+      log.w('offline', 'hayConexion falló; se asume que hay red', error: e);
       return true; // ante la duda, intentar (el upload real dirá si hay o no)
     }
   }
@@ -127,8 +138,9 @@ class OfflineService extends ChangeNotifier {
         pChildren.add({'record': c['record'], 'photos': cp});
       }
     }
+    final id = _uuid.v4();
     _ops.add({
-      'id': _uuid.v4(),
+      'id': id,
       'type': type,
       'record': record,
       'photos': pPhotos,
@@ -137,28 +149,56 @@ class OfflineService extends ChangeNotifier {
       'attempts': 0,
     });
     await _save();
+    log.i('offline', 'Operación encolada', data: {
+      'id': id,
+      'tipo': type,
+      'fotos': pPhotos.length,
+      'hijos': pChildren.length,
+      'pendientes': _ops.length,
+      if (record['reserva_id'] != null) 'reserva_id': record['reserva_id'],
+      if (record['tipo'] != null) 'registro_tipo': record['tipo'],
+    });
     flush(); // por si ya hay conexión
   }
 
   // ── Sincronizar la cola ──────────────────────────────────────────────────
   Future<void> flush() async {
     if (_flushing || _ops.isEmpty) return;
-    if (!await hayConexion()) return;
+    if (!await hayConexion()) {
+      log.w('offline', 'flush omitido: sin red', data: {'pendientes': _ops.length});
+      return;
+    }
     _flushing = true;
     notifyListeners();
+    log.i('offline', 'flush iniciado', data: {'pendientes': _ops.length});
     try {
       final pendientes = List<Map<String, dynamic>>.from(_ops);
       for (final op in pendientes) {
+        final sw = Stopwatch()..start();
         try {
           await _procesar(op);
           _borrarFotos(op);
           _ops.removeWhere((o) => o['id'] == op['id']);
           await _save();
-        } catch (e) {
+          log.i('offline', 'Operación subida', data: {
+            'id': op['id'],
+            'tipo': op['type'],
+            'intentos_previos': op['attempts'],
+            'ms': sw.elapsedMilliseconds,
+          });
+        } catch (e, st) {
           op['attempts'] = ((op['attempts'] ?? 0) as int) + 1;
           op['lastError'] = e.toString();
           await _save();
-          debugPrint('OfflineService: op ${op['type']} falló (queda pendiente): $e');
+          log.e('offline', 'Operación falló (queda pendiente)',
+              data: {
+                'id': op['id'],
+                'tipo': op['type'],
+                'intentos': op['attempts'],
+                'ms': sw.elapsedMilliseconds,
+              },
+              error: e,
+              stack: st);
         }
       }
     } finally {

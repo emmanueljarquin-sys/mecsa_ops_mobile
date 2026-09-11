@@ -56,6 +56,8 @@ dependencies:
   pdf: ^3.11.1             # generar el PDF de la visita (registro de rutas)
   printing: ^5.13.4        # menú del sistema para compartir/guardar/imprimir el PDF
   gal: ^2.3.1              # guardar las fotos originales en la galería del teléfono
+  sqflite: ^2.3.3          # base de datos local (log de actividad, futura caché/cola offline)
+  path: ^1.9.0             # rutas de archivo (usado por local_db)
 
 dev_dependencies:
   flutter_test:
