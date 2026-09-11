@@ -1392,7 +1392,10 @@ class AppProvider extends ChangeNotifier {
       notifyListeners();
 
       if (user == null) throw "No autenticado";
-      if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
+      if (currentEmployeeId == null) {
+        await _fetchCurrentEmployeeId()
+            .timeout(const Duration(seconds: 15), onTimeout: () {});
+      }
       if (currentEmployeeId == null) throw "No se encontró el ID de empleado";
       AppLogger.instance.i('registro', 'inicio $tipo · reserva=$reservaId');
 
@@ -1467,12 +1470,18 @@ class AppProvider extends ChangeNotifier {
         debugPrint("Could not get registration location: $e");
       }
 
-      await _supabase
-          .schema('flotilla')
-          .from('registros_vehiculos')
-          .insert(data)
-          .timeout(const Duration(seconds: 30));
-      AppLogger.instance.i('registro', 'insert OK $tipo · km=$kilometraje');
+      try {
+        await _supabase
+            .schema('flotilla')
+            .from('registros_vehiculos')
+            .insert(data)
+            .timeout(const Duration(seconds: 30));
+        AppLogger.instance.i('registro', 'insert OK $tipo · km=$kilometraje');
+      } on PostgrestException catch (e) {
+        // 23505 = índice único (reserva+tipo ya existe) → ya quedó registrado = éxito.
+        if (e.code != '23505') rethrow;
+        AppLogger.instance.i('registro', 'ya existía (23505) → éxito $tipo');
+      }
 
       // El registro YA quedó guardado. Refrescar en SEGUNDO PLANO (sin await):
       // fetchData() no tiene timeouts y con mala señal se colgaba, dejando la UI

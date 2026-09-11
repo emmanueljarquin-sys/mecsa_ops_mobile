@@ -134,9 +134,12 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
       if (value != null) localPhotos[key] = File(value.path);
     });
 
-    // ── SIN CONEXIÓN: guardar en la cola y subir cuando vuelva el internet ──
-    if (!await OfflineService.instance.hayConexion()) {
-      await _encolarParaSubir('Guardado sin conexión. Se subirá solo cuando haya internet.');
+    // ── SIN INTERNET REAL: guardar en la cola y subir cuando vuelva ──
+    // No basta con estar conectado a una red: el Wi-Fi de Mecsa puede estar
+    // conectado pero sin salida. Verificamos internet REAL antes de intentar.
+    if (!await OfflineService.instance.tieneInternetReal()) {
+      await _encolarParaSubir(
+          'Sin internet. Se guardó en el teléfono y se subirá solo cuando haya conexión.');
       return;
     }
 

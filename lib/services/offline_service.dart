@@ -18,6 +18,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
+import 'app_logger.dart';
 
 class OfflineService extends ChangeNotifier {
   OfflineService._();
@@ -62,6 +63,39 @@ class OfflineService extends ChangeNotifier {
       return _online(await Connectivity().checkConnectivity());
     } catch (_) {
       return true; // ante la duda, intentar (el upload real dirá si hay o no)
+    }
+  }
+
+  /// ¿Hay internet REAL? No basta con estar conectado a una red: el Wi-Fi de
+  /// Mecsa puede estar conectado pero SIN salida a internet, y ahí la app se
+  /// colgaba "intentando". Verificamos que de verdad se alcance el backend.
+  Future<bool> tieneInternetReal(
+      {Duration timeout = const Duration(seconds: 5)}) async {
+    if (!await hayConexion()) {
+      AppLogger.instance.i('red', 'sin red (connectivity)');
+      return false;
+    }
+    // 1) ¿Llega al backend propio? (es lo que de verdad importa para operar)
+    try {
+      final r = await http
+          .get(Uri.parse(
+              'https://awhuzekjpoapamijlvua.supabase.co/auth/v1/health'))
+          .timeout(timeout);
+      if (r.statusCode >= 200 && r.statusCode < 500) return true;
+    } catch (_) {}
+    // 2) Segundo intento contra un host neutral (por si el backend está caído).
+    try {
+      final r = await http
+          .get(Uri.parse('https://www.gstatic.com/generate_204'))
+          .timeout(timeout);
+      final ok = r.statusCode == 204 || r.statusCode == 200;
+      if (!ok) {
+        AppLogger.instance.w('red', 'red conectada pero SIN salida a internet');
+      }
+      return ok;
+    } catch (_) {
+      AppLogger.instance.w('red', 'red conectada pero SIN salida a internet');
+      return false;
     }
   }
 
@@ -154,10 +188,14 @@ class OfflineService extends ChangeNotifier {
           _borrarFotos(op);
           _ops.removeWhere((o) => o['id'] == op['id']);
           await _save();
+          AppLogger.instance
+              .i('cola', 'subido ${op['type']} (quedan ${_ops.length})');
         } catch (e) {
           op['attempts'] = ((op['attempts'] ?? 0) as int) + 1;
           op['lastError'] = e.toString();
           await _save();
+          AppLogger.instance.w('cola',
+              'op ${op['type']} queda pendiente (intentos ${op['attempts']}): $e');
           debugPrint('OfflineService: op ${op['type']} falló (queda pendiente): $e');
         }
       }
@@ -241,11 +279,21 @@ class OfflineService extends ChangeNotifier {
       final name = await _subirRegistroFoto(e.value); // e.key = 'frente','lateral_der'...
       record['foto_${e.key}'] = name;
     }
-    await _sb
-        .schema('flotilla')
-        .from('registros_vehiculos')
-        .insert(record)
-        .timeout(const Duration(seconds: 40));
+    try {
+      await _sb
+          .schema('flotilla')
+          .from('registros_vehiculos')
+          .insert(record)
+          .timeout(const Duration(seconds: 40));
+    } on PostgrestException catch (e) {
+      // 23505 = choque con el índice único (reserva+tipo ya existe). Es ÉXITO:
+      // el registro ya está; sacamos la op de la cola en vez de reintentar en loop.
+      if (e.code == '23505') {
+        AppLogger.instance.i('cola', 'registro ya existía (23505) → éxito');
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> _subirFactura(Map<String, dynamic> op) async {

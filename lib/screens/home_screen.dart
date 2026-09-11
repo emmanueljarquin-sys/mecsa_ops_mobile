@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../providers/app_provider.dart';
 import '../widgets/bottom_nav.dart';
+import '../widgets/estado_conexion_banner.dart';
 import 'flotilla_screen.dart';
 import 'viaticos_screen.dart';
 import 'visitas_screen.dart';
@@ -14,7 +15,6 @@ import 'profile_screen.dart';
 import 'live_map_screen.dart';
 import 'admin/admin_hub_screen.dart';
 import 'auditorias/auditorias_list_screen.dart';
-import '../services/offline_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -254,7 +254,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     return Scaffold(
       body: SafeArea(
-        child: IndexedStack(index: provider.currentIndex, children: screens),
+        child: Column(
+          children: [
+            const EstadoConexionBanner(),
+            Expanded(
+              child: IndexedStack(
+                  index: provider.currentIndex, children: screens),
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: const BottomNav(),
     );
@@ -474,40 +482,8 @@ class DashboardTab extends StatelessWidget {
   
             const SizedBox(height: 24),
 
-            // Pendientes de sincronizar (offline)
-            Consumer<OfflineService>(
-              builder: (_, offline, __) {
-                if (offline.pendingCount == 0) return const SizedBox.shrink();
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.orange.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(offline.isFlushing ? Icons.sync : Icons.cloud_upload_outlined,
-                          color: Colors.orange.shade800),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          offline.isFlushing
-                              ? 'Subiendo ${offline.pendingCount} pendiente(s)…'
-                              : '${offline.pendingCount} pendiente(s) de subir (sin conexión)',
-                          style: TextStyle(fontWeight: FontWeight.w600, color: Colors.orange.shade900),
-                        ),
-                      ),
-                      if (offline.isFlushing)
-                        const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      else
-                        TextButton(onPressed: () => offline.flush(), child: const Text('Sincronizar')),
-                    ],
-                  ),
-                );
-              },
-            ),
+            // (El indicador de pendientes ahora es global: EstadoConexionBanner
+            //  arriba de todas las pestañas — ver home Scaffold.)
 
             // 3. Main Action Buttons
             Row(
