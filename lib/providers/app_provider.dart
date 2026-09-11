@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/tracking_service.dart';
+import '../services/app_logger.dart';
 
 class AppProvider extends ChangeNotifier {
   int _currentIndex = 0;
@@ -521,6 +522,7 @@ class AppProvider extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
 
+    AppLogger.instance.i('fetchData', 'inicio (user=${user?.email ?? "null"})');
     try {
       // Siempre intentar cargar departamentos y empresas (necesario para registro)
       await Future.wait([
@@ -532,6 +534,10 @@ class AppProvider extends ChangeNotifier {
 
       // 1. First lookup Employee ID (needed for reservations/viaticos filtering)
       await _fetchCurrentEmployeeId();
+      if (currentEmployeeId == null) {
+        AppLogger.instance.w('fetchData',
+            'currentEmployeeId=null tras buscar empleado — reservas/viáticos saldrán vacíos');
+      }
 
       // 2. Fetch all data in parallel
       await Future.wait([
@@ -543,8 +549,11 @@ class AppProvider extends ChangeNotifier {
         _fetchEmployees(),
         fetchPersonalVehicles(),
       ]);
+      AppLogger.instance.i('fetchData',
+          'OK · vehículos=$totalVehiculos reservas=${myReservations.length}');
     } catch (e) {
       debugPrint("Error fetching data: $e");
+      AppLogger.instance.e('fetchData', 'falló la carga inicial', e);
       if (user != null) {
         errorMessage = e.toString().contains("desactivada")
             ? e.toString()
@@ -576,7 +585,10 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> _fetchMyReservations() async {
     try {
-      if (currentEmployeeId == null) return;
+      if (currentEmployeeId == null) {
+        AppLogger.instance.w('reservas', 'sin currentEmployeeId — no se cargan');
+        return;
+      }
 
       // Fetch reservations + joined vehicle data
       // join syntax: '*, vehiculo:vehiculos(*)' if relations exist.
@@ -601,10 +613,13 @@ class AppProvider extends ChangeNotifier {
           })
           .toList();
 
+      AppLogger.instance.i('reservas',
+          'crudas=${(res as List).length} mostradas=${myReservations.length}');
       // Post-process to ensure clean structure similar to vehicle list if needed
       // but simpler to just pass raw Map to UI.
     } catch (e) {
       debugPrint("Error fetching my reservations: $e");
+      AppLogger.instance.w('reservas', 'join falló, intento fallback: $e');
       // Fallback: fetch just reservations
       try {
         final res = await _supabase
@@ -620,8 +635,11 @@ class AppProvider extends ChangeNotifier {
               return fechaRegreso == null || fechaRegreso.isAfter(cutoff);
             })
             .toList();
+        AppLogger.instance.i('reservas',
+            'fallback OK · mostradas=${myReservations.length}');
       } catch (e2) {
         print("Fallback failed: $e2");
+        AppLogger.instance.e('reservas', 'fallback también falló', e2);
       }
     }
   }
@@ -674,8 +692,10 @@ class AppProvider extends ChangeNotifier {
           })
           .toList()
           .cast<Map<String, dynamic>>();
+      AppLogger.instance.i('vehiculos', 'cargados=$totalVehiculos');
     } catch (e) {
       debugPrint("Error loading flotilla: $e");
+      AppLogger.instance.e('vehiculos', 'falló la carga de vehículos', e);
       rethrow;
     }
   }
@@ -1374,6 +1394,7 @@ class AppProvider extends ChangeNotifier {
       if (user == null) throw "No autenticado";
       if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
       if (currentEmployeeId == null) throw "No se encontró el ID de empleado";
+      AppLogger.instance.i('registro', 'inicio $tipo · reserva=$reservaId');
 
       // Idempotencia (igual que el path offline _subirRegistro): si YA existe un
       // registro para esta reserva+tipo (no rechazado), NO duplicar → devolver éxito.
@@ -1388,7 +1409,10 @@ class AppProvider extends ChangeNotifier {
             .neq('estado', 'Rechazado')
             .limit(1)
             .timeout(const Duration(seconds: 15));
-        if ((ya as List).isNotEmpty) return true;
+        if ((ya as List).isNotEmpty) {
+          AppLogger.instance.i('registro', 'ya existía $tipo (no duplico) → éxito');
+          return true;
+        }
       } catch (_) { /* si el chequeo falla por red, seguimos e intentamos igual */ }
 
       // 1. Upload photos in parallel
@@ -1410,6 +1434,8 @@ class AppProvider extends ChangeNotifier {
       if (uploadFutures.isNotEmpty) {
         await Future.wait(uploadFutures);
       }
+      AppLogger.instance.i('registro',
+          'fotos subidas=${photoUrls.length}/${uploadFutures.length}');
 
       // 2. Insert record
       // Use reservaId directly as UUID string
@@ -1446,6 +1472,7 @@ class AppProvider extends ChangeNotifier {
           .from('registros_vehiculos')
           .insert(data)
           .timeout(const Duration(seconds: 30));
+      AppLogger.instance.i('registro', 'insert OK $tipo · km=$kilometraje');
 
       // El registro YA quedó guardado. Refrescar en SEGUNDO PLANO (sin await):
       // fetchData() no tiene timeouts y con mala señal se colgaba, dejando la UI
@@ -1454,6 +1481,7 @@ class AppProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint("Error saving vehicle register: $e");
+      AppLogger.instance.e('registro', 'falló guardar $tipo', e);
       errorMessage = "Error al guardar registro: $e";
       return false;
     } finally {

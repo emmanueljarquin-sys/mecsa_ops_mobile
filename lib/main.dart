@@ -4,9 +4,12 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'dart:io' show Platform;
 import 'theme/app_theme.dart';
 import 'providers/app_provider.dart';
 import 'services/offline_service.dart';
+import 'services/app_logger.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 
@@ -41,6 +44,15 @@ void main() async {
     await OfflineService.instance.init();
   } catch (e) {
     print("OfflineService init failed: $e");
+  }
+
+  // Marca de inicio en el log del teléfono (diagnóstico de fallas de Operaciones).
+  try {
+    final info = await PackageInfo.fromPlatform();
+    AppLogger.instance.i('app',
+        '=== app abierta · v${info.version}+${info.buildNumber} · ${Platform.operatingSystem} ${Platform.operatingSystemVersion} ===');
+  } catch (_) {
+    AppLogger.instance.i('app', '=== app abierta ===');
   }
 
   runApp(MecsaOpsApp(firebaseAvailable: firebaseAvailable));

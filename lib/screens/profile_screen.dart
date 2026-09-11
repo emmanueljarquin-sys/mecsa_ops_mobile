@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import 'log_viewer_screen.dart';
 
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
@@ -240,6 +241,21 @@ class ProfileScreen extends StatelessWidget {
               leading: const Icon(Icons.record_voice_over, color: Colors.blue),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showProfileVoiceSettings(context, provider),
+            ),
+
+            // DIAGNÓSTICO / LOG DEL TELÉFONO
+            ListTile(
+              title: const Text("Registro de actividad"),
+              subtitle: const Text(
+                "Ver y compartir el log con TI si tenés una falla",
+              ),
+              leading: const Icon(Icons.description_outlined,
+                  color: Color(0xFF013483)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const LogViewerScreen()),
+              ),
             ),
 
             const SizedBox(height: 40),
