@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:gal/gal.dart';
+import 'package:printing/printing.dart';
 import '../providers/app_provider.dart';
+import '../services/visita_pdf_service.dart';
+import '../utils/mensajes_error.dart';
 import 'trip_nav_screen.dart';
 import 'visita_inicio_screen.dart';
 
@@ -22,6 +26,77 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
   void initState() {
     super.initState();
     _visita = widget.visita;
+  }
+
+  void _cargando(String msg) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(children: [
+          const CircularProgressIndicator(),
+          const SizedBox(width: 16),
+          Expanded(child: Text(msg)),
+        ]),
+      ),
+    );
+  }
+
+  /// PDF con datos de la visita y una página por foto; abre compartir.
+  Future<void> _exportarPdf() async {
+    final messenger = ScaffoldMessenger.of(context);
+    _cargando('Generando PDF con fotos…');
+    try {
+      final bytes = await VisitaPdfService.construir(_visita);
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: VisitaPdfService.nombreArchivo(_visita),
+      );
+    } catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(SnackBar(
+        content: Text(mensajeError(e, accion: 'generar el PDF')),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
+
+  /// Guarda todas las fotos de la visita en la galería (álbum MecsaOPS).
+  Future<void> _guardarFotos() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final fotos = VisitaPdfService.fotosDe(_visita);
+    if (fotos.isEmpty) {
+      messenger.showSnackBar(const SnackBar(content: Text('No hay fotos para guardar.')));
+      return;
+    }
+    try {
+      if (!await Gal.hasAccess()) {
+        if (!await Gal.requestAccess()) {
+          messenger.showSnackBar(const SnackBar(
+              content: Text('Se necesita permiso para guardar en la galería.')));
+          return;
+        }
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    _cargando('Guardando fotos…');
+    int ok = 0;
+    for (final f in fotos) {
+      final bytes = await VisitaPdfService.bytesDe(f.value);
+      if (bytes != null) {
+        try {
+          await Gal.putImageBytes(bytes, album: 'MecsaOPS');
+          ok++;
+        } catch (_) {}
+      }
+    }
+    if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    messenger.showSnackBar(SnackBar(
+      content: Text(ok == fotos.length
+          ? '$ok foto(s) guardadas en la galería (álbum MecsaOPS).'
+          : '$ok de ${fotos.length} fotos guardadas. Las demás no están disponibles sin conexión.'),
+    ));
   }
 
   @override
@@ -50,6 +125,19 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF1E293B),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf),
+            tooltip: 'Exportar PDF',
+            onPressed: _exportarPdf,
+          ),
+          if (combinedPhotos.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.download_outlined),
+              tooltip: 'Guardar fotos en la galería',
+              onPressed: _guardarFotos,
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Column(

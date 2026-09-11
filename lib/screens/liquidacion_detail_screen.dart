@@ -4,11 +4,14 @@ import '../utils/mensajes_error.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/liquidacion.dart';
 import '../services/liquidaciones_service.dart';
 import '../services/offline_service.dart';
+import '../services/comprobantes_service.dart';
+import '../services/liquidacion_pdf_service.dart';
+import 'comprobante_viewer_screen.dart';
 import '../providers/app_provider.dart';
 import '../widgets/correccion_widgets.dart';
 import '../utils/num_parse.dart';
@@ -60,6 +63,11 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
         isLoading = false;
       });
       _loadComentarios();
+      // Dejar los comprobantes en caché para verlos / exportarlos sin red.
+      final paths = (liquidacion?.facturas ?? [])
+          .map((f) => f.comprobantePath ?? '')
+          .where((p) => p.isNotEmpty);
+      ComprobantesService.instance.precargar(paths);
     } catch (e) {
       setState(() {
         error = e.toString();
@@ -199,6 +207,39 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
   static String _msg(Object e) =>
       e.toString().replaceAll('Exception: ', '').replaceAll('PostgrestException(message: ', '').split(',').first;
 
+  /// Genera el PDF (datos + facturas + comprobantes) y abre el diálogo de
+  /// compartir del sistema (WhatsApp, correo, Drive, guardar…).
+  Future<void> _exportarPdf() async {
+    final l = liquidacion;
+    if (l == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(children: [
+          CircularProgressIndicator(),
+          SizedBox(width: 16),
+          Expanded(child: Text('Generando PDF con comprobantes…')),
+        ]),
+      ),
+    );
+    try {
+      final bytes = await LiquidacionPdfService.construir(l);
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: LiquidacionPdfService.nombreArchivo(l),
+      );
+    } catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      messenger.showSnackBar(SnackBar(
+        content: Text(mensajeError(e, accion: 'generar el PDF')),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -210,6 +251,11 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
         actions: liquidacion == null
             ? null
             : [
+                IconButton(
+                  icon: const Icon(Icons.picture_as_pdf),
+                  tooltip: 'Exportar PDF',
+                  onPressed: _exportarPdf,
+                ),
                 if (liquidacion!.estado == 'pendiente')
                   IconButton(
                     icon: const Icon(Icons.delete),
@@ -744,7 +790,7 @@ class _FacturaItem extends StatelessWidget {
               ),
             ],
           ),
-          if (factura.documento != null && factura.documento!.isNotEmpty)
+          if (factura.comprobantePath != null)
             Padding(
               padding: const EdgeInsets.only(top: 12.0),
               child: Row(
@@ -770,9 +816,11 @@ class _FacturaItem extends StatelessWidget {
                             color: Colors.green,
                           ),
                           const SizedBox(width: 8),
-                          const Text(
-                            'Comprobante adjunto',
-                            style: TextStyle(
+                          Text(
+                            factura.documento == null || factura.documento!.isEmpty
+                                ? 'Comprobante (pendiente de subir)'
+                                : 'Comprobante adjunto',
+                            style: const TextStyle(
                               color: Colors.green,
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
@@ -780,7 +828,11 @@ class _FacturaItem extends StatelessWidget {
                           ),
                           const Spacer(),
                           TextButton.icon(
-                            onPressed: () => _viewDocument(factura.documento!),
+                            onPressed: () => ComprobanteViewerScreen.abrir(
+                              context,
+                              factura.comprobantePath!,
+                              titulo: '${factura.tipoLabel} · ${factura.proveedor}',
+                            ),
                             icon: const Icon(Icons.visibility, size: 18),
                             label: const Text(
                               'VER',
@@ -808,19 +860,6 @@ class _FacturaItem extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  Future<void> _viewDocument(String path) async {
-    final url = Uri.parse(
-      'https://awhuzekjpoapamijlvua.supabase.co/storage/v1/object/public/facturas_viaticos/$path',
-    );
-    try {
-      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-        throw 'No se pudo abrir la URL';
-      }
-    } catch (e) {
-      debugPrint('Error al abrir documento: $e');
-    }
   }
 }
 

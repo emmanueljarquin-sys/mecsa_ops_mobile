@@ -48,7 +48,7 @@ La clasificación vive en `_clasificarErrorSesion()`: `AuthRetryableFetchExcepti
 
 ## 8.1 Qué se persiste y dónde
 
-Todo vive en la base SQLite `mecsa_ops_local.db` ([local_db.dart](../lib/services/local_db.dart), versión 3). Las fotos pendientes se copian a `<documentos de la app>/offline_photos/<uuid>.<ext>`.
+Todo vive en la base SQLite `mecsa_ops_local.db` ([local_db.dart](../lib/services/local_db.dart), versión 4). Las fotos pendientes se copian a `<documentos de la app>/offline_photos/<uuid>.<ext>`.
 
 | Tabla | Qué guarda | Quién la escribe |
 |-------|------------|------------------|
@@ -57,6 +57,7 @@ Todo vive en la base SQLite `mecsa_ops_local.db` ([local_db.dart](../lib/service
 | `reservas` | Reservas del usuario tal como las devuelve el API (con el join de vehículo). Se **sobrescriben completas** en cada sincronización: el servidor manda | `ReservasLocal` desde `_fetchMyReservations()` |
 | `liquidaciones` | Liquidaciones del **último mes** (30 días) con sus facturas, traídas al iniciar sesión y en cada `fetchData()` (`local = 0`), más las creadas sin conexión (`local = 1`, id `local-…`) | `LiquidacionesLocal` |
 | `cache` (`liq_empleados`, `liq_proyectos`) | Personal para "personal incluido" y los 100 proyectos más recientes, para crear liquidaciones sin conexión. Se refrescan en `fetchData()` y en la copia diaria | `LiquidacionesService` |
+| `vehiculos` | Vehículos personales del empleado (`visitas.vehiculos_personales`), sobrescritos en cada sincronización. Permiten iniciar visitas sin red | `VehiculosLocal` (v4) |
 | `id_map` | `local-<uuid>` → id real del servidor, para operaciones encadenadas | `OfflineService` |
 | `app_log` | Log de diagnóstico | `AppLogger` |
 
@@ -213,7 +214,17 @@ Opciones (SharedPreferences `backup_*`): activar/desactivar, frecuencia (**diari
 
 La pantalla ([backup_settings_screen.dart](../lib/screens/backup_settings_screen.dart)) muestra además la lista de pendientes con su último error y el historial de lo subido recientemente (`OfflineService.historial()`).
 
-## 8.8 Limitaciones conocidas
+## 8.8 Comprobantes y PDF de liquidación
+
+- `ComprobantesService` guarda cada comprobante (imagen del bucket `facturas_viaticos`) en `<documentos de la app>/comprobantes/` la primera vez que se ve o al abrir el detalle con red (`precargar`). Las facturas agregadas sin conexión usan directamente su foto local.
+- El botón "Ver" abre `ComprobanteViewerScreen` (zoom, dentro de la app). Sin red se ven los que ya están en caché; los PDF se abren con la app externa.
+- "Exportar PDF" en el detalle (`LiquidacionPdfService`) arma datos generales, tabla de facturas, totales y una página por comprobante, y lo comparte con `Printing.sharePdf`. Funciona sin conexión con lo que haya en caché.
+
+### Visitas: PDF y fotos
+
+En "Detalle de Visita" hay dos acciones: **Exportar PDF** (`VisitaPdfService`: datos, recorrido, notas y una página por foto, compartido con `Printing.sharePdf`) y **Guardar fotos** en la galería (álbum MecsaOPS, con `gal`). Ambas aceptan fotos por URL o por ruta local (visitas creadas sin conexión).
+
+## 8.9 Limitaciones conocidas
 
 - La caché de lectura es "última respuesta conocida": no hay sincronización incremental ni resolución de conflictos.
 - Crear reservas, editar visitas ya subidas, auditorías y correcciones siguen requiriendo conexión.
@@ -221,4 +232,5 @@ La pantalla ([backup_settings_screen.dart](../lib/screens/backup_settings_screen
 - Si sube la foto pero falla el `INSERT`, el reintento vuelve a subir la foto y deja un archivo huérfano en Storage.
 - Una visita iniciada sin conexión no se puede abrir en `VisitaDetailScreen` ni editar hasta que suba (id local).
 - La lista de liquidaciones sin red muestra solo el último mes (lo que hay en SQLite); no hay paginación offline.
+- Los comentarios de una liquidación no se guardan localmente; sin red no se ven.
 - Los mensajes de error para el usuario salen de `mensajeError()` ([mensajes_error.dart](../lib/utils/mensajes_error.dart)): red, timeout, sesión, permisos y duplicados tienen texto fijo; el detalle técnico va solo al log.

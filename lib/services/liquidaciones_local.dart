@@ -90,6 +90,18 @@ class LiquidacionesLocal {
     }
   }
 
+  /// Inserta o actualiza UNA liquidación remota (p.ej. al abrir su detalle),
+  /// sin tocar las demás.
+  Future<void> guardarUna(Map<String, dynamic> j) async {
+    try {
+      final db = await LocalDb.instance.db;
+      await db.insert('liquidaciones', _row(j, local: false),
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    } catch (e) {
+      log.w('liquidaciones', 'No se pudo guardar el detalle', error: e);
+    }
+  }
+
   Future<void> eliminar(String id) async {
     try {
       final db = await LocalDb.instance.db;

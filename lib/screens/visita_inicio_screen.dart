@@ -8,6 +8,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../widgets/offline_notice.dart';
 import '../utils/location_helper.dart';
 
 const String kMapsKey = "AIzaSyASZXQg6DuMo2NRbxnhmLssq6lVPaBL8ZU";
@@ -578,11 +579,27 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
         foregroundColor: Colors.white,
         centerTitle: true,
       ),
-      body: _paso == 1
-          ? _buildPaso1()
-          : _paso == 2
-              ? _buildPaso2()
-              : _buildPaso3(),
+      body: Column(
+        children: [
+          // Aviso de modo sin conexión (la visita sigue funcionando: se
+          // guarda en el teléfono y se sube sola cuando haya internet).
+          OfflineNotice(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            texto: _paso == 1
+                ? 'Sin conexión: puedes iniciar la visita. Se guardará en el teléfono y se subirá automáticamente cuando haya internet.'
+                : _paso == 2
+                    ? 'Sin conexión: el recorrido se guarda en el teléfono. Se subirá al finalizar cuando haya internet.'
+                    : 'Sin conexión: la visita quedará pendiente de subir. El kilometraje y el monto se calcularán al sincronizar.',
+          ),
+          Expanded(
+            child: _paso == 1
+                ? _buildPaso1()
+                : _paso == 2
+                    ? _buildPaso2()
+                    : _buildPaso3(),
+          ),
+        ],
+      ),
     );
   }
 

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../services/offline_service.dart';
 import '../utils/num_parse.dart';
+import '../widgets/offline_notice.dart';
 
 class VehicleRegisterScreen extends StatefulWidget {
   final Map<String, dynamic> reservation;
@@ -43,6 +44,13 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
   };
 
   final ImagePicker _picker = ImagePicker();
+  // Bandera PROPIA de guardado. Antes el botón usaba provider.isLoading, que
+  // también enciende la recarga general (fetchData) y dejaba el botón girando
+  // aunque el usuario no hubiera tocado nada.
+  bool _isSaving = false;
+  /// Tiempo máximo para el guardado en línea completo (verificación + fotos +
+  /// inserción). Si se excede, se encola y se sube solo después.
+  static const Duration _guardadoTimeout = Duration(seconds: 45);
 
   @override
   void initState() {
@@ -112,6 +120,7 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
   }
 
   void _submit() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
 
     // Validate photos
@@ -134,13 +143,25 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
       if (value != null) localPhotos[key] = File(value.path);
     });
 
-    // ── SIN CONEXIÓN: guardar en la cola y subir cuando vuelva el internet ──
+    setState(() => _isSaving = true);
+    try {
+      await _guardar(provider, localPhotos);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _guardar(AppProvider provider, Map<String, dynamic> localPhotos) async {
+    // ── SIN CONEXIÓN (sondeo real al backend, no solo "hay red"): encolar ──
     if (!await OfflineService.instance.hayConexion()) {
       await _encolarParaSubir('Guardado sin conexión. Se subirá solo cuando haya internet.');
       return;
     }
 
     try {
+      // Un solo tope de tiempo para todo el guardado en línea. Los timeouts
+      // internos (15 s verificación, 40 s por foto, 30 s inserción) sumaban
+      // más de un minuto con señal débil; ahora a los 45 s se encola.
       final success = await provider.saveVehicleRegister(
         reservaId: widget.reservation['id'].toString(),
         tipo: widget.tipo,
@@ -154,7 +175,7 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
         poseeRefraccion: _poseeRefraccion,
         poseeCompass: _poseeCompass,
         localPhotos: localPhotos,
-      );
+      ).timeout(_guardadoTimeout);
 
       if (success && mounted) {
         // --- AUTOMATIZACIÓN DE RASTREO ---
@@ -312,6 +333,15 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(title),
+
+              // Aviso: sin internet el registro se guarda en el teléfono y
+              // se sube solo cuando vuelva la conexión.
+              OfflineNotice(
+                margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                texto: widget.tipo == 'salida'
+                    ? 'Sin conexión: puedes registrar la salida. Quedará guardada en el teléfono y se subirá automáticamente cuando haya internet.'
+                    : 'Sin conexión: puedes registrar la entrada. Quedará guardada en el teléfono y se subirá automáticamente cuando haya internet.',
+              ),
 
               Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -655,12 +685,11 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
   }
 
   Widget _buildSubmitButton() {
-    final provider = Provider.of<AppProvider>(context);
     return SizedBox(
       width: double.infinity,
       height: 55,
       child: ElevatedButton(
-        onPressed: provider.isLoading ? null : _submit,
+        onPressed: _isSaving ? null : _submit,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF0D6EFD),
           foregroundColor: Colors.white,
@@ -668,7 +697,7 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        child: provider.isLoading
+        child: _isSaving
             ? const CircularProgressIndicator(color: Colors.white)
             : const Text(
                 "GUARDAR REGISTRO",

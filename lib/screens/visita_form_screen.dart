@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../widgets/offline_notice.dart';
 import '../utils/location_helper.dart';
 import 'map_picker_screen.dart';
 
@@ -199,6 +200,12 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              OfflineNotice(
+                permiteContinuar: widget.visita == null,
+                texto: widget.visita == null
+                    ? 'Sin conexión: la visita se guardará en el teléfono (fotos incluidas) y quedará pendiente de subir hasta que haya internet.'
+                    : 'Sin conexión: editar una visita existente requiere internet.',
+              ),
               _buildLocationStatus(),
               const SizedBox(height: 20),
 

@@ -19,7 +19,7 @@ class LocalDb {
   static final LocalDb instance = LocalDb._();
 
   static const String dbName = 'mecsa_ops_local.db';
-  static const int dbVersion = 3;
+  static const int dbVersion = 4;
 
   Database? _db;
   Future<Database>? _opening;
@@ -50,6 +50,7 @@ class LocalDb {
     await _createLogTable(db);
     await _createCacheTable(db);
     await _createOfflineTables(db);
+    await _createVehiculosTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -57,6 +58,24 @@ class LocalDb {
     if (oldVersion < 1) await _createLogTable(db);
     if (oldVersion < 2) await _createCacheTable(db);
     if (oldVersion < 3) await _createOfflineTables(db);
+    if (oldVersion < 4) await _createVehiculosTable(db);
+  }
+
+  /// v4: vehículos personales del empleado (para iniciar visitas sin red).
+  /// Se sobrescriben completos en cada sincronización.
+  Future<void> _createVehiculosTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS vehiculos (
+        id          TEXT PRIMARY KEY,
+        empleado_id TEXT NOT NULL,
+        alias       TEXT,
+        placa       TEXT,
+        json        TEXT NOT NULL,
+        updated_ms  INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_vehiculos_empleado ON vehiculos(empleado_id)');
   }
 
   /// Tablas de trabajo offline (v3):

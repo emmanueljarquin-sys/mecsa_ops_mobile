@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'cache_service.dart';
 import 'connectivity_service.dart';
+import 'liquidaciones_local.dart';
 import 'dart:convert';
 import '../models/liquidacion.dart';
 
@@ -135,7 +136,48 @@ class LiquidacionesService {
   }
 
   // Obtener detalle de una liquidación
+  /// Detalle desde SQLite (último mes o creada sin conexión). Recalcula los
+  /// totales por tipo a partir de sus facturas.
+  static Future<Liquidacion?> _detalleDeSqlite(String id) async {
+    final l = await LiquidacionesLocal.instance.obtener(id);
+    if (l == null) return null;
+    final Map<String, double> totales = {};
+    for (final f in l.facturas ?? <Factura>[]) {
+      totales[f.tipo] = (totales[f.tipo] ?? 0) + f.monto;
+    }
+    totales['TOTAL'] = totales.values.fold(0.0, (a, b) => a + b);
+    final j = <String, dynamic>{
+      'id': l.id,
+      'empleado_id': l.empleadoId,
+      'fecha': l.fecha.toIso8601String().split('T')[0],
+      'tarjeta_ult4': l.tarjetaUlt4,
+      'proyecto_id': l.proyectoId,
+      'tipo': l.tipo,
+      'personal_incluido': l.personalIncluido,
+      'estado': l.estado,
+      'total': l.total,
+      'created_at': l.createdAt.toIso8601String(),
+      'descripcion': l.descripcion,
+      'solicitud_correccion': l.solicitudCorreccion,
+      'respuesta_admin': l.respuestaAdmin,
+      'facturas': (l.facturas ?? [])
+          .map((f) => {...f.toJson(), 'id': f.id, 'documento_local': f.localDocPath})
+          .toList(),
+      'totales': totales,
+    };
+    final r = Liquidacion.fromJson(j);
+    r.esLocal = l.esLocal;
+    return r;
+  }
+
+  /// Detalle de una liquidación. Con conexión consulta el servidor y guarda
+  /// la fila en SQLite; sin conexión (o si falla) la lee de SQLite.
   static Future<Liquidacion> getLiquidacionDetail(String id) async {
+    if (id.startsWith('local-') || !await connectivity.checkInternet()) {
+      final local = await _detalleDeSqlite(id);
+      if (local != null) return local;
+      throw 'Sin conexión y esta liquidación no está guardada en el teléfono.';
+    }
     try {
       final supabase = Supabase.instance.client;
 
@@ -189,9 +231,13 @@ class LiquidacionesService {
         }
       }
 
+      // Mantener la copia local al día para verla luego sin red.
+      await LiquidacionesLocal.instance.guardarUna(data);
       return Liquidacion.fromJson(data);
     } catch (e) {
       print('DEBUG: ERROR en getLiquidacionDetail vía Supabase: $e');
+      final local = await _detalleDeSqlite(id);
+      if (local != null) return local;
       rethrow;
     }
   }

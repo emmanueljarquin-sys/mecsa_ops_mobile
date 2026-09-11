@@ -165,8 +165,14 @@ class Factura {
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'])
           : null,
+      localDocPath: json['documento_local']?.toString(),
     );
   }
+
+  /// Ruta del comprobante a mostrar: la subida al servidor o, si aún no
+  /// subió (agregada sin conexión), la foto local del teléfono.
+  String? get comprobantePath =>
+      (documento != null && documento!.isNotEmpty) ? documento : localDocPath;
 
   Map<String, dynamic> toJson() {
     return {

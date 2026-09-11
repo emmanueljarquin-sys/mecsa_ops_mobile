@@ -19,6 +19,7 @@ import '../models/liquidacion.dart';
 import '../services/offline_service.dart';
 import '../utils/mensajes_error.dart';
 import '../services/reservas_local.dart';
+import '../services/vehiculos_local.dart';
 import '../services/sync_service.dart';
 import '../services/tracking_service.dart';
 
@@ -296,6 +297,9 @@ class AppProvider extends ChangeNotifier {
       if (results[6].isNotEmpty) departments = results[6];
       if (results[7].isNotEmpty) companies = results[7];
       if (results[8].isNotEmpty) personalVehicles = results[8];
+      // La tabla `vehiculos` de SQLite manda sobre la caché JSON.
+      final vehSql = await VehiculosLocal.instance.listar(currentEmployeeId);
+      if (vehSql.isNotEmpty) personalVehicles = vehSql;
 
       lastSyncAt ??= await cache.lastUpdated(['vehiculos', 'reservas']);
       log.i('cache', 'Datos cargados desde caché', data: {
@@ -482,6 +486,7 @@ class AppProvider extends ChangeNotifier {
         await cache.clearScope();
         if (empSaliente != null) {
           await ReservasLocal.instance.limpiarEmpleado(empSaliente);
+          await VehiculosLocal.instance.limpiarEmpleado(empSaliente);
           await LiquidacionesLocal.instance.limpiarEmpleado(empSaliente);
         }
         notifyListeners();
@@ -1342,6 +1347,7 @@ class AppProvider extends ChangeNotifier {
 
       personalVehicles = List<Map<String, dynamic>>.from(res);
       cache.put('vehiculosPersonales', personalVehicles);
+      await VehiculosLocal.instance.guardar(currentEmployeeId!, personalVehicles);
       notifyListeners();
     } catch (e) {
       _fallo('vehículos personales', e);

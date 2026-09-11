@@ -49,6 +49,7 @@ import 'liquidaciones_local.dart';
 import 'liquidaciones_service.dart';
 import 'offline_service.dart';
 import 'reservas_local.dart';
+import 'vehiculos_local.dart';
 
 /// Nombre de la tarea periódica (WorkManager).
 const String kSyncTaskUnique = 'mecsa_backup_diario';
@@ -497,6 +498,23 @@ class SyncService extends ChangeNotifier {
       total += rows.length;
     } catch (e) {
       log.w('sync', 'Liquidaciones no se pudieron bajar', error: e);
+    }
+
+    // Vehículos personales del empleado (kilometraje de visitas).
+    try {
+      final res = await sb
+          .schema('visitas')
+          .from('vehiculos_personales')
+          .select()
+          .eq('empleado_id', empleadoId)
+          .order('alias', ascending: true)
+          .timeout(const Duration(seconds: 30));
+      final rows = List<Map<String, dynamic>>.from(res);
+      await cache.put('vehiculosPersonales', rows);
+      await VehiculosLocal.instance.guardar(empleadoId, rows);
+      total += rows.length;
+    } catch (e) {
+      log.w('sync', 'Vehículos no se pudieron bajar', error: e);
     }
 
     // Personal y últimos proyectos para el formulario de liquidaciones.
