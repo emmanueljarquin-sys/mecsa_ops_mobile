@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
+import 'cache_service.dart';
+import 'connectivity_service.dart';
 import 'dart:convert';
 import '../models/liquidacion.dart';
 
@@ -136,7 +138,7 @@ class LiquidacionesService {
   static Future<Liquidacion> getLiquidacionDetail(String id) async {
     try {
       final supabase = Supabase.instance.client;
-      
+
       // Obtener liquidación base
       final res = await supabase
           .schema('viaticos')
@@ -144,14 +146,14 @@ class LiquidacionesService {
           .select('*')
           .eq('id', id)
           .single();
-      
+
       // Obtener facturas relacionadas
       final facturasRes = await supabase
           .schema('viaticos')
           .from('facturas')
           .select('*')
           .eq('liquidacion_id', id);
-      
+
       final Map<String, dynamic> data = Map<String, dynamic>.from(res);
       data['facturas'] = facturasRes;
 
@@ -237,7 +239,7 @@ class LiquidacionesService {
     try {
       final supabase = Supabase.instance.client;
       final data = liquidacion.toJson();
-      
+
       final res = await supabase
           .schema('viaticos')
           .from('liquidaciones')
@@ -245,7 +247,7 @@ class LiquidacionesService {
           .eq('id', id)
           .select()
           .single();
-          
+
       return Liquidacion.fromJson(res);
     } catch (e) {
       print('DEBUG: ERROR en updateLiquidacion vía Supabase: $e');
@@ -278,7 +280,7 @@ class LiquidacionesService {
           .insert(factura.toJson())
           .select()
           .single();
-          
+
       return Factura.fromJson(res);
     } catch (e) {
       print('DEBUG: ERROR en createFactura vía Supabase: $e');
@@ -358,7 +360,7 @@ class LiquidacionesService {
       final supabase = Supabase.instance.client;
       final updateData = {'estado': estado};
       // Aquí se podría guardar el comentario en una tabla de auditoría o columna si existiera
-      
+
       final res = await supabase
           .schema('viaticos')
           .from('liquidaciones')
@@ -366,7 +368,7 @@ class LiquidacionesService {
           .eq('id', id)
           .select()
           .single();
-          
+
       return Liquidacion.fromJson(res);
     } catch (e) {
       print('DEBUG: ERROR en approveLiquidacion vía Supabase: $e');
@@ -375,23 +377,47 @@ class LiquidacionesService {
   }
 
   // Obtener empleados
+  // Claves de caché (SQLite, tabla `cache`, separadas por usuario).
+  static const String _kCacheEmpleados = 'liq_empleados';
+  static const String _kCacheProyectos = 'liq_proyectos';
+  /// Cuántos proyectos (los más recientes) se guardan para uso sin conexión.
+  static const int proyectosEnCache = 100;
+
+  static Future<List<Empleado>> _empleadosDeCache() async {
+    final hit = await cache.get(_kCacheEmpleados);
+    return (hit?.asList() ?? []).map((e) => Empleado.fromJson(e)).toList();
+  }
+
+  static Future<List<Proyecto>> _proyectosDeCache() async {
+    final hit = await cache.get(_kCacheProyectos);
+    return (hit?.asList() ?? []).map((e) => Proyecto.fromJson(e)).toList();
+  }
+
+  /// Personal para "personal incluido". Con conexión consulta y guarda en
+  /// caché; sin conexión (o si falla) devuelve la última lista guardada.
   static Future<List<Empleado>> getEmpleados() async {
+    if (!await connectivity.checkInternet()) return _empleadosDeCache();
     try {
       final supabase = Supabase.instance.client;
       final res = await supabase
           .from('Empleados')
           .select('id, nombre, apellido')
-          .order('nombre');
-      
-      return (res as List).map((e) => Empleado.fromJson(e)).toList();
+          .order('nombre')
+          .timeout(const Duration(seconds: 20));
+      final rows = List<Map<String, dynamic>>.from(res as List);
+      await cache.put(_kCacheEmpleados, rows);
+      return rows.map((e) => Empleado.fromJson(e)).toList();
     } catch (e) {
       print('DEBUG: ERROR cargando empleados en LiquidacionesService: $e');
-      return [];
+      return _empleadosDeCache();
     }
   }
 
   // Obtener proyectos
+  /// Proyectos. Con conexión trae todos (paginado) y guarda en caché los
+  /// [proyectosEnCache] más recientes; sin conexión devuelve esa caché.
   static Future<List<Proyecto>> getProyectos() async {
+    if (!await connectivity.checkInternet()) return _proyectosDeCache();
     try {
       final supabase = Supabase.instance.client;
       // PostgREST limita cada request a 1000 filas. Con 2600+ proyectos,
@@ -415,10 +441,15 @@ class LiquidacionesService {
         if (list.length < pageSize) break;
         from += pageSize;
       }
+      // Los más recientes ya vienen primero (order project_id desc).
+      await cache.put(
+        _kCacheProyectos,
+        all.take(proyectosEnCache).map((p) => {'id': p.id, 'nombre': p.nombre, 'zona': p.zona}).toList(),
+      );
       return all;
     } catch (e) {
       print('DEBUG: ERROR cargando proyectos vía Supabase: $e');
-      return [];
+      return _proyectosDeCache();
     }
   }
 
@@ -427,7 +458,7 @@ class LiquidacionesService {
     try {
       final supabase = Supabase.instance.client;
       final session = supabase.auth.currentSession;
-      
+
       if (session == null) {
         throw "No hay una sesión activa. Por favor, vuelve a iniciar sesión.";
       }
@@ -438,14 +469,14 @@ class LiquidacionesService {
       }
 
       final fileName = "${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}";
-      
+
       print('DEBUG: Intento de subida a bucket: facturas_viaticos');
       print('DEBUG: File: $fileName | User: ${session.user.id}');
 
       await supabase.storage
           .from('facturas_viaticos')
           .upload(fileName, file, fileOptions: const FileOptions(upsert: true));
-          
+
       return fileName;
     } catch (e) {
       print('DEBUG: Error CRITICO en uploadDocumento: $e');

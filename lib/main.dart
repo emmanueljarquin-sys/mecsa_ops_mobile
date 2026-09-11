@@ -44,8 +44,8 @@ void syncCallbackDispatcher() {
       await ConnectivityService.instance.init(
           probeUrl: '$kSupabaseUrl/rest/v1/', headers: {'apikey': kSupabaseAnonKey});
       await OfflineService.instance.init();
-      final r = await SyncService.instance.sincronizar();
-      return r.ok || r.pendientes == 0;
+      final r = await SyncService.instance.sincronizarSiToca();
+      return r == null || r.ok || r.pendientes == 0;
     } catch (e, st) {
       log.e('sync', 'Tarea de fondo falló', error: e, stack: st);
       return false;

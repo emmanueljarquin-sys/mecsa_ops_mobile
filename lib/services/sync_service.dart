@@ -17,7 +17,14 @@
 //
 // Preferencias (SharedPreferences):
 //   backup_enabled     bool   copia automática activada (default true)
+//   backup_freq        String 'diaria' | 'semanal' | 'mensual' (default diaria)
+//   backup_weekday     int    1=lunes … 7=domingo (semanal, default 1)
+//   backup_monthday    int    1..28 (mensual, default 1)
 //   backup_hour/minute int    hora local (default 02:00)
+//
+// WorkManager solo garantiza periodicidad aproximada, así que la tarea de
+// fondo corre TODOS los días a la hora elegida y `tocaHoy()` decide si según
+// la frecuencia (semanal/mensual) hoy corresponde hacer la copia.
 //   backup_wifi_only   bool   solo WiFi (default true) o WiFi + datos
 //   backup_last_run_ms int    última ejecución
 //   backup_last_result String resumen de la última ejecución
@@ -39,6 +46,7 @@ import 'app_logger.dart';
 import 'cache_service.dart';
 import 'connectivity_service.dart';
 import 'liquidaciones_local.dart';
+import 'liquidaciones_service.dart';
 import 'offline_service.dart';
 import 'reservas_local.dart';
 
@@ -74,6 +82,12 @@ class SyncService extends ChangeNotifier {
   bool _corriendo = false;
   String? _paso;
   bool enabled = true;
+  /// 'diaria' | 'semanal' | 'mensual'
+  String freq = 'diaria';
+  /// 1 = lunes … 7 = domingo (solo semanal).
+  int weekday = DateTime.monday;
+  /// 1..28 (solo mensual).
+  int monthday = 1;
   int hour = 2;
   int minute = 0;
   bool wifiOnly = true;
@@ -88,6 +102,9 @@ class SyncService extends ChangeNotifier {
   Future<void> cargarPrefs() async {
     final p = await SharedPreferences.getInstance();
     enabled = p.getBool('backup_enabled') ?? true;
+    freq = p.getString('backup_freq') ?? 'diaria';
+    weekday = p.getInt('backup_weekday') ?? DateTime.monday;
+    monthday = p.getInt('backup_monthday') ?? 1;
     hour = p.getInt('backup_hour') ?? 2;
     minute = p.getInt('backup_minute') ?? 0;
     wifiOnly = p.getBool('backup_wifi_only') ?? true;
@@ -100,6 +117,9 @@ class SyncService extends ChangeNotifier {
 
   Future<void> guardarPrefs({
     bool? enabled,
+    String? freq,
+    int? weekday,
+    int? monthday,
     int? hour,
     int? minute,
     bool? wifiOnly,
@@ -108,6 +128,18 @@ class SyncService extends ChangeNotifier {
     if (enabled != null) {
       this.enabled = enabled;
       await p.setBool('backup_enabled', enabled);
+    }
+    if (freq != null) {
+      this.freq = freq;
+      await p.setString('backup_freq', freq);
+    }
+    if (weekday != null) {
+      this.weekday = weekday;
+      await p.setInt('backup_weekday', weekday);
+    }
+    if (monthday != null) {
+      this.monthday = monthday.clamp(1, 28);
+      await p.setInt('backup_monthday', this.monthday);
     }
     if (hour != null) {
       this.hour = hour;
@@ -164,7 +196,9 @@ class SyncService extends ChangeNotifier {
         backoffPolicyDelay: const Duration(minutes: 15),
       );
       log.i('sync', 'Copia automática programada', data: {
-        'proxima': next.toIso8601String(),
+        'frecuencia': freq,
+        'primerChequeo': next.toIso8601String(),
+        'proximaCopia': proximaEjecucion?.toIso8601String(),
         'enMinutos': delay.inMinutes,
         'soloWifi': wifiOnly,
       });
@@ -174,12 +208,61 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  /// ¿Corresponde hacer la copia en la fecha [d] según la frecuencia?
+  bool tocaEnFecha(DateTime d) {
+    switch (freq) {
+      case 'semanal':
+        return d.weekday == weekday;
+      case 'mensual':
+        return d.day == monthday;
+      default:
+        return true;
+    }
+  }
+
+  /// Próxima copia automática real (respetando frecuencia).
   DateTime? get proximaEjecucion {
     if (!enabled) return null;
     final now = DateTime.now();
     var next = DateTime(now.year, now.month, now.day, hour, minute);
     if (!next.isAfter(now)) next = next.add(const Duration(days: 1));
+    for (int i = 0; i < 62; i++) {
+      if (tocaEnFecha(next)) return next;
+      next = next.add(const Duration(days: 1));
+    }
     return next;
+  }
+
+  String get descripcionFrecuencia {
+    const dias = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+    final hh = hour.toString().padLeft(2, '0');
+    final mm = minute.toString().padLeft(2, '0');
+    switch (freq) {
+      case 'semanal':
+        return 'Cada ${dias[(weekday - 1).clamp(0, 6)]} a las $hh:$mm';
+      case 'mensual':
+        return 'El día $monthday de cada mes a las $hh:$mm';
+      default:
+        return 'Todos los días a las $hh:$mm';
+    }
+  }
+
+  /// Llamado por la tarea diaria de WorkManager: solo sincroniza si hoy
+  /// corresponde según la frecuencia (y no se hizo ya hoy).
+  Future<SyncResumen?> sincronizarSiToca() async {
+    if (!_prefsCargadas) await cargarPrefs();
+    final hoy = DateTime.now();
+    if (!enabled) return null;
+    if (!tocaEnFecha(hoy)) {
+      log.i('sync', 'Hoy no toca copia automática', data: {'frecuencia': freq});
+      return null;
+    }
+    final lr = lastRun;
+    if (lr != null && lr.year == hoy.year && lr.month == hoy.month && lr.day == hoy.day && freq != 'diaria') {
+      log.i('sync', 'Copia automática ya hecha hoy');
+      return null;
+    }
+    return sincronizar();
   }
 
   // ── Notificaciones ──────────────────────────────────────────────────────
@@ -414,6 +497,14 @@ class SyncService extends ChangeNotifier {
       total += rows.length;
     } catch (e) {
       log.w('sync', 'Liquidaciones no se pudieron bajar', error: e);
+    }
+
+    // Personal y últimos proyectos para el formulario de liquidaciones.
+    try {
+      await LiquidacionesService.getEmpleados();
+      await LiquidacionesService.getProyectos();
+    } catch (e) {
+      log.w('sync', 'Caché del formulario de liquidaciones falló', error: e);
     }
 
     // Visitas.

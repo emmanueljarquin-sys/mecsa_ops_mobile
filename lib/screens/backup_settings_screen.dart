@@ -42,14 +42,17 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     final diff = now.difference(d);
     final hh = d.hour.toString().padLeft(2, '0');
     final mm = d.minute.toString().padLeft(2, '0');
-    if (diff.inMinutes < 1) return 'Hace un momento';
-    if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
-    if (d.year == now.year && d.month == now.month && d.day == now.day) {
-      return 'Hoy a las $hh:$mm';
-    }
-    final ayer = now.subtract(const Duration(days: 1));
-    if (d.year == ayer.year && d.month == ayer.month && d.day == ayer.day) {
-      return 'Ayer a las $hh:$mm';
+    bool mismoDia(DateTime a, DateTime b) =>
+        a.year == b.year && a.month == b.month && a.day == b.day;
+    if (d.isAfter(now)) {
+      // Fecha futura (próxima copia).
+      if (mismoDia(d, now)) return 'Hoy a las $hh:$mm';
+      if (mismoDia(d, now.add(const Duration(days: 1)))) return 'Mañana a las $hh:$mm';
+    } else {
+      if (diff.inMinutes < 1) return 'Hace un momento';
+      if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
+      if (mismoDia(d, now)) return 'Hoy a las $hh:$mm';
+      if (mismoDia(d, now.subtract(const Duration(days: 1)))) return 'Ayer a las $hh:$mm';
     }
     return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} $hh:$mm';
   }
@@ -85,6 +88,65 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     ));
   }
 
+  Future<void> _elegirDiaSemana(SyncService s) async {
+    const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+    final v = await showDialog<int>(
+      context: context,
+      builder: (_) => SimpleDialog(
+        title: const Text('Día de la semana'),
+        children: [
+          for (int i = 1; i <= 7; i++)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, i),
+              child: Row(children: [
+                Icon(i == s.weekday ? Icons.radio_button_checked : Icons.radio_button_off,
+                    size: 20, color: Theme.of(context).primaryColor),
+                const SizedBox(width: 10),
+                Text(dias[i - 1]),
+              ]),
+            ),
+        ],
+      ),
+    );
+    if (v != null) await s.guardarPrefs(weekday: v);
+  }
+
+  Future<void> _elegirDiaMes(SyncService s) async {
+    final v = await showDialog<int>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Día del mes'),
+        content: SizedBox(
+          width: 320,
+          child: GridView.count(
+            crossAxisCount: 7,
+            shrinkWrap: true,
+            children: [
+              for (int i = 1; i <= 28; i++)
+                InkWell(
+                  onTap: () => Navigator.pop(context, i),
+                  child: Center(
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i == s.monthday ? Theme.of(context).primaryColor : null,
+                      ),
+                      child: Text('$i',
+                          style: TextStyle(color: i == s.monthday ? Colors.white : null)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (v != null) await s.guardarPrefs(monthday: v);
+  }
+
   Future<void> _elegirHora(SyncService s) async {
     final t = await showTimePicker(
       context: context,
@@ -112,6 +174,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
             final hh = s.hour.toString().padLeft(2, '0');
             final mm = s.minute.toString().padLeft(2, '0');
             final prox = s.proximaEjecucion;
+            const dias = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
             return ListView(
               padding: const EdgeInsets.all(20),
               children: [
@@ -183,7 +246,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                       _fila(
                         Icons.schedule,
                         'Próxima copia automática',
-                        prox == null ? 'Desactivada' : _fmtFecha(prox).replaceFirst('Hoy', 'Hoy').replaceFirst('Hace', ''),
+                        prox == null ? 'Desactivada' : _fmtFecha(prox),
                       ),
                       const SizedBox(height: 16),
                       SizedBox(
@@ -224,22 +287,67 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Text(
-                  'Se ejecuta todos los días aunque la app esté cerrada. Android puede moverla unos minutos para ahorrar batería.',
+                  'Se ejecuta aunque la app esté cerrada. Android puede moverla unos minutos para ahorrar batería.',
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                 ),
                 const SizedBox(height: 8),
                 _tarjeta(children: [
                   SwitchListTile(
-                    title: const Text('Copia diaria'),
-                    subtitle: Text(s.enabled ? 'Activada' : 'Desactivada'),
+                    title: const Text('Copia automática'),
+                    subtitle: Text(s.enabled ? s.descripcionFrecuencia : 'Desactivada'),
                     value: s.enabled,
                     onChanged: (v) => s.guardarPrefs(enabled: v),
                   ),
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.repeat, size: 20),
+                        const SizedBox(width: 12),
+                        const Text('Frecuencia'),
+                        const Spacer(),
+                        SegmentedButton<String>(
+                          showSelectedIcon: false,
+                          style: const ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          segments: const [
+                            ButtonSegment(value: 'diaria', label: Text('Diaria')),
+                            ButtonSegment(value: 'semanal', label: Text('Semanal')),
+                            ButtonSegment(value: 'mensual', label: Text('Mensual')),
+                          ],
+                          selected: {s.freq},
+                          onSelectionChanged: s.enabled
+                              ? (v) => s.guardarPrefs(freq: v.first)
+                              : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (s.freq == 'semanal')
+                    ListTile(
+                      enabled: s.enabled,
+                      leading: const Icon(Icons.calendar_view_week),
+                      title: const Text('Día de la semana'),
+                      subtitle: Text(dias[(s.weekday - 1).clamp(0, 6)]),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: s.enabled ? () => _elegirDiaSemana(s) : null,
+                    ),
+                  if (s.freq == 'mensual')
+                    ListTile(
+                      enabled: s.enabled,
+                      leading: const Icon(Icons.calendar_month),
+                      title: const Text('Día del mes'),
+                      subtitle: Text('Día ${s.monthday}'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: s.enabled ? () => _elegirDiaMes(s) : null,
+                    ),
                   ListTile(
                     enabled: s.enabled,
                     leading: const Icon(Icons.access_time),
                     title: const Text('Hora'),
-                    subtitle: Text('Todos los días a las $hh:$mm'),
+                    subtitle: Text('$hh:$mm'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: s.enabled ? () => _elegirHora(s) : null,
                   ),
@@ -357,18 +465,13 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
   }
 
   Widget _tarjeta({required List<Widget> children}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+    // Material (no Container) para que los ListTile pinten su fondo/ink.
+    return Material(
+      color: Colors.white,
+      elevation: 1,
+      shadowColor: Colors.black.withValues(alpha: 0.15),
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
       child: Column(children: children),
     );
   }

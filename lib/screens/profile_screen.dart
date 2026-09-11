@@ -274,14 +274,12 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Consumer2<SyncService, OfflineService>(
               builder: (context, sync, offline, _) {
-                final hh = sync.hour.toString().padLeft(2, '0');
-                final mm = sync.minute.toString().padLeft(2, '0');
                 final sub = sync.isRunning
                     ? (sync.pasoActual ?? 'Sincronizando…')
                     : offline.pendingCount > 0
-                        ? '${offline.pendingCount} pendiente(s) de subir · diaria a las $hh:$mm'
+                        ? '${offline.pendingCount} pendiente(s) de subir · ${sync.descripcionFrecuencia}'
                         : sync.enabled
-                            ? 'Todo al día · diaria a las $hh:$mm'
+                            ? 'Todo al día · ${sync.descripcionFrecuencia}'
                             : 'Copia automática desactivada';
                 return ListTile(
                   leading: Icon(

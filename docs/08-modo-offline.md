@@ -56,6 +56,7 @@ Todo vive en la base SQLite `mecsa_ops_local.db` ([local_db.dart](../lib/service
 | `offline_queue` | Cola de operaciones. `estado` = `pendiente` o `subido`; las subidas se conservan 30 días como historial con `synced_ms` y `remote_id` | `OfflineService` |
 | `reservas` | Reservas del usuario tal como las devuelve el API (con el join de vehículo). Se **sobrescriben completas** en cada sincronización: el servidor manda | `ReservasLocal` desde `_fetchMyReservations()` |
 | `liquidaciones` | Liquidaciones del **último mes** (30 días) con sus facturas, traídas al iniciar sesión y en cada `fetchData()` (`local = 0`), más las creadas sin conexión (`local = 1`, id `local-…`) | `LiquidacionesLocal` |
+| `cache` (`liq_empleados`, `liq_proyectos`) | Personal para "personal incluido" y los 100 proyectos más recientes, para crear liquidaciones sin conexión. Se refrescan en `fetchData()` y en la copia diaria | `LiquidacionesService` |
 | `id_map` | `local-<uuid>` → id real del servidor, para operaciones encadenadas | `OfflineService` |
 | `app_log` | Log de diagnóstico | `AppLogger` |
 
@@ -206,9 +207,9 @@ El Dashboard tiene un `Consumer<OfflineService>` que muestra un banner con `pend
 2. Vuelve a bajar reservas, liquidaciones del último mes (con facturas) y visitas del usuario y las guarda en SQLite/caché, sobrescribiendo con lo que diga el API.
 3. Mientras corre muestra la notificación "Sincronizando con el servidor…" (canal `channel_sync`, con barra de progreso) y al terminar "Sincronización completa" con el resumen.
 
-Se ejecuta a mano con "Sincronizar ahora" y automáticamente todos los días a la hora configurada (por defecto **02:00**) con WorkManager (`Workmanager().registerPeriodicTask`, frecuencia 24 h, `initialDelay` hasta la próxima hora elegida). El callback `syncCallbackDispatcher` vive en `main.dart` porque el isolate de fondo arranca vacío: inicializa logger, Supabase (la sesión persiste en el dispositivo), `ConnectivityService` y `OfflineService`, y llama `SyncService.sincronizar()`.
+Se ejecuta a mano con "Sincronizar ahora" y automáticamente todos los días a la hora configurada (por defecto **02:00**) con WorkManager (`Workmanager().registerPeriodicTask`, frecuencia 24 h, `initialDelay` hasta la próxima hora elegida). La tarea corre todos los días; `sincronizarSiToca()` decide si hoy corresponde según la frecuencia (semanal/mensual) y evita repetir si ya se hizo ese día. El callback `syncCallbackDispatcher` vive en `main.dart` porque el isolate de fondo arranca vacío: inicializa logger, Supabase (la sesión persiste en el dispositivo), `ConnectivityService` y `OfflineService`, y llama `SyncService.sincronizar()`.
 
-Opciones (SharedPreferences `backup_*`): activar/desactivar, hora, y red permitida: **solo WiFi** (constraint `NetworkType.unmetered`, por defecto) o **WiFi o datos móviles** (`NetworkType.connected`). La copia manual y la sincronización al recuperar conexión ignoran esa restricción. Android puede mover la ejecución unos minutos (Doze, batería baja); no es un reloj exacto.
+Opciones (SharedPreferences `backup_*`): activar/desactivar, frecuencia (**diaria**, **semanal** con día de la semana, o **mensual** con día del mes 1-28), hora, y red permitida: **solo WiFi** (constraint `NetworkType.unmetered`, por defecto) o **WiFi o datos móviles** (`NetworkType.connected`). La copia manual y la sincronización al recuperar conexión ignoran esa restricción. Android puede mover la ejecución unos minutos (Doze, batería baja); no es un reloj exacto.
 
 La pantalla ([backup_settings_screen.dart](../lib/screens/backup_settings_screen.dart)) muestra además la lista de pendientes con su último error y el historial de lo subido recientemente (`OfflineService.historial()`).
 

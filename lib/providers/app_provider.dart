@@ -14,6 +14,8 @@ import '../services/app_logger.dart';
 import '../services/cache_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/liquidaciones_local.dart';
+import '../services/liquidaciones_service.dart';
+import '../models/liquidacion.dart';
 import '../services/offline_service.dart';
 import '../utils/mensajes_error.dart';
 import '../services/reservas_local.dart';
@@ -949,6 +951,12 @@ class AppProvider extends ChangeNotifier {
         _consulta('empleados', _fetchEmployees),
         _consulta('vehiculosPersonales', fetchPersonalVehicles),
       ]);
+
+      // Precalentar la caché del formulario de liquidaciones (personal y
+      // últimos proyectos) para poder crear liquidaciones sin conexión.
+      // Corre en segundo plano; no bloquea ni cuenta como fallo de carga.
+      LiquidacionesService.getEmpleados().catchError((_) => <Empleado>[]);
+      LiquidacionesService.getProyectos().catchError((_) => <Proyecto>[]);
 
       if (_fallosCarga.isEmpty) {
         loadError = null;
