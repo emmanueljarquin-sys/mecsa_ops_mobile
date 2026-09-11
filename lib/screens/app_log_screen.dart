@@ -7,15 +7,20 @@
 // Se llega desde Perfil > Registro de actividad > Ver registro.
 // =============================================================================
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../services/app_logger.dart';
 import 'log_settings_screen.dart';
+
+enum _ExportFormat { pdf, csv, json }
 
 class AppLogScreen extends StatefulWidget {
   const AppLogScreen({super.key});
@@ -126,6 +131,65 @@ class _AppLogScreenState extends State<AppLogScreen> {
     }
   }
 
+  String _stamp() =>
+      DateTime.now().toIso8601String().substring(0, 16).replaceAll(':', '-');
+
+  Future<void> _share(_ExportFormat fmt) async {
+    switch (fmt) {
+      case _ExportFormat.pdf:
+        return _sharePdf();
+      case _ExportFormat.csv:
+        return _shareTextFile(
+          ext: 'csv',
+          mime: 'text/csv',
+          build: () => AppLogger.instance.exportCsv(
+            levels: _levels, module: _module, search: _search.text),
+        );
+      case _ExportFormat.json:
+        return _shareTextFile(
+          ext: 'json',
+          mime: 'application/json',
+          build: () => AppLogger.instance.exportJson(
+            levels: _levels, module: _module, search: _search.text),
+        );
+    }
+  }
+
+  /// Genera el contenido, lo escribe en un archivo temporal y abre el menú
+  /// de compartir del sistema (WhatsApp, correo, Drive...).
+  Future<void> _shareTextFile({
+    required String ext,
+    required String mime,
+    required Future<String> Function() build,
+  }) async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final content = await build();
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/mecsaops_log_${_stamp()}.$ext');
+      await file.writeAsString(content, flush: true);
+      final result = await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path, mimeType: mime)],
+        subject: 'Registro de actividad MecsaOPS (${ext.toUpperCase()})',
+        text: 'Registro de actividad de MecsaOPS Mobile '
+            'v${AppLogger.instance.appVersion ?? '?'}',
+      ));
+      AppLogger.instance.i('log', 'Registro exportado a ${ext.toUpperCase()}',
+          data: {'bytes': content.length, 'resultado': result.status.name});
+    } catch (e, st) {
+      AppLogger.instance.e('log', 'No se pudo exportar a ${ext.toUpperCase()}',
+          error: e, stack: st);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo exportar: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   Future<void> _sharePdf() async {
     if (_exporting) return;
     setState(() => _exporting = true);
@@ -177,11 +241,8 @@ class _AppLogScreenState extends State<AppLogScreen> {
         ),
       );
       final bytes = await doc.save();
-      final stamp = DateTime.now()
-          .toIso8601String()
-          .substring(0, 16)
-          .replaceAll(':', '-');
-      await Printing.sharePdf(bytes: bytes, filename: 'mecsaops_log_$stamp.pdf');
+      await Printing.sharePdf(
+          bytes: bytes, filename: 'mecsaops_log_${_stamp()}.pdf');
       AppLogger.instance.i('log', 'Registro exportado a PDF',
           data: {'entradas': entries.length});
     } catch (e, st) {
@@ -272,14 +333,44 @@ class _AppLogScreenState extends State<AppLogScreen> {
             tooltip: 'Copiar todo',
             onPressed: _entries.isEmpty ? null : _copyAll,
           ),
-          IconButton(
+          PopupMenuButton<_ExportFormat>(
             icon: _exporting
                 ? const SizedBox(
                     width: 18, height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.share_outlined),
-            tooltip: 'Compartir PDF',
-            onPressed: _entries.isEmpty || _exporting ? null : _sharePdf,
+            tooltip: 'Compartir',
+            enabled: _entries.isNotEmpty && !_exporting,
+            onSelected: _share,
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: _ExportFormat.pdf,
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.picture_as_pdf_outlined),
+                  title: Text('PDF'),
+                  subtitle: Text('Para leer'),
+                ),
+              ),
+              PopupMenuItem(
+                value: _ExportFormat.csv,
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.table_chart_outlined),
+                  title: Text('CSV'),
+                  subtitle: Text('Para Excel'),
+                ),
+              ),
+              PopupMenuItem(
+                value: _ExportFormat.json,
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.data_object),
+                  title: Text('JSON'),
+                  subtitle: Text('Para análisis'),
+                ),
+              ),
+            ],
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),

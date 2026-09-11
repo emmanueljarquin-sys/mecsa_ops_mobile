@@ -79,12 +79,22 @@ sequenceDiagram
     TI->>U: pedir Perfil > Ver registro > Compartir PDF
     U->>App: Perfil > Ver registro
     App->>App: filtra por nivel/módulo/texto
-    U->>App: botón Compartir
-    App->>App: genera PDF (últimas 1 500 entradas filtradas, fuente Courier embebida)
-    App->>U: menú del sistema (WhatsApp / correo)
-    U->>TI: envía PDF
+    U->>App: botón Compartir → PDF / CSV / JSON
+    App->>App: genera el archivo con los filtros activos
+    App->>U: menú del sistema (WhatsApp / correo / Drive)
+    U->>TI: envía el archivo
     TI->>TI: busca módulo registro/fetchData/auth alrededor de la hora del reporte
 ```
+
+Formatos de exportación (respetan los filtros de nivel, módulo y texto activos en el visor):
+
+| Formato | Para qué | Cómo se genera | Límite |
+|---------|----------|----------------|--------|
+| PDF | Leer en el teléfono o reenviar | paquete `pdf` + `Printing.sharePdf`, fuente Courier embebida (sin internet) | 1 500 entradas |
+| CSV | Abrir en Excel / Google Sheets | `AppLogger.exportCsv()` → archivo temporal → `share_plus`. UTF-8 con BOM, `datos` como JSON en una celda | 5 000 entradas |
+| JSON | Análisis en TI (scripts, jq) | `AppLogger.exportJson()` → archivo temporal → `share_plus`. Objeto con encabezado (`version`, `usuario`, `exportado`) y arreglo `log` | 5 000 entradas |
+
+Las entradas van en orden cronológico (más antigua primero). El botón "Copiar" del visor sigue copiando la versión de texto al portapapeles.
 
 Si TI necesita más detalle, pedir al usuario activar el nivel **Depuración** en Configurar registro, reproducir el problema y volver a compartir.
 

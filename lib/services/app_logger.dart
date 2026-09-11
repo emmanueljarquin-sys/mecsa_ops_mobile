@@ -92,6 +92,20 @@ class LogEntry {
     );
   }
 
+  /// Representación plana (para JSON / CSV).
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'fecha': ts.toIso8601String(),
+        'nivel': level.tag,
+        'modulo': module,
+        'mensaje': message,
+        'datos': data,
+        'error': error,
+        'stack': stack,
+        'usuario': usuario,
+        'version': appVersion,
+      };
+
   String toText() {
     final b = StringBuffer();
     b.write('${_fmt(ts)} [${level.tag}] $module: $message');
@@ -422,6 +436,64 @@ class AppLogger extends ChangeNotifier {
       b.writeln(e.toText());
     }
     return b.toString();
+  }
+
+  /// Exporta como JSON (arreglo de entradas, más antiguo primero) con un
+  /// encabezado de contexto. Pensado para análisis en TI.
+  Future<String> exportJson({
+    Set<LogLevel>? levels,
+    String? module,
+    String? search,
+    int limit = 5000,
+  }) async {
+    final entries =
+        await query(levels: levels, module: module, search: search, limit: limit);
+    final doc = {
+      'app': 'MecsaOPS Mobile',
+      'version': _appVersion,
+      'usuario': _usuario,
+      'exportado': DateTime.now().toIso8601String(),
+      'entradas': entries.length,
+      'log': entries.reversed.map((e) => e.toMap()).toList(),
+    };
+    const encoder = JsonEncoder.withIndent('  ');
+    return encoder.convert(doc);
+  }
+
+  /// Exporta como CSV (separador coma, comillas dobles escapadas, UTF-8 con
+  /// BOM para que Excel lo abra con acentos). Más antiguo primero.
+  Future<String> exportCsv({
+    Set<LogLevel>? levels,
+    String? module,
+    String? search,
+    int limit = 5000,
+  }) async {
+    final entries =
+        await query(levels: levels, module: module, search: search, limit: limit);
+    const cols = [
+      'id', 'fecha', 'nivel', 'modulo', 'mensaje',
+      'datos', 'error', 'stack', 'usuario', 'version',
+    ];
+    final b = StringBuffer('﻿')..writeln(cols.join(',')); // BOM para Excel
+    for (final e in entries.reversed) {
+      final m = e.toMap();
+      b.writeln(cols.map((c) {
+        final v = m[c];
+        if (v == null) return '';
+        final s = v is Map ? _safeJson(Map<String, dynamic>.from(v)) : v.toString();
+        return _csvCell(s);
+      }).join(','));
+    }
+    return b.toString();
+  }
+
+  static String _csvCell(String s) {
+    final needsQuotes = s.contains(',') ||
+        s.contains('"') ||
+        s.contains('\n') ||
+        s.contains('\r');
+    if (!needsQuotes) return s;
+    return '"${s.replaceAll('"', '""')}"';
   }
 
   // ── Utilidades ───────────────────────────────────────────────────────────
