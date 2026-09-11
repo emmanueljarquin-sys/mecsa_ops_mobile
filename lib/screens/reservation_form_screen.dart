@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import '../utils/mensajes_error.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
+import '../services/connectivity_service.dart';
+import '../services/offline_service.dart';
 import '../theme/app_theme.dart';
 import 'map_picker_screen.dart';
 
@@ -281,6 +284,31 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
 
               const SizedBox(height: 32),
 
+              // Las reservas requieren conexión (se valida disponibilidad y
+              // choques en el servidor). Sin internet, el botón se desactiva.
+              if (!context.watch<ConnectivityService>().isOnline)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.wifi_off, color: Colors.red.shade700),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'Sin conexión a internet. Las reservas solo se pueden crear con conexión.',
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -291,7 +319,8 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  onPressed: provider.isLoading
+                  onPressed: (provider.isLoading ||
+                          !context.watch<ConnectivityService>().isOnline)
                       ? null
                       : () => _submit(provider),
                   child: provider.isLoading
@@ -490,8 +519,17 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
 
     if (_selectedVehicleId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Error: Ningún vehículo seleccionado")),
+        const SnackBar(content: Text("Selecciona un vehículo para continuar.")),
       );
+      return;
+    }
+
+    if (!await OfflineService.instance.hayConexion()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text("Sin conexión a internet. Las reservas solo se pueden crear con conexión."),
+        backgroundColor: Colors.red,
+      ));
       return;
     }
 

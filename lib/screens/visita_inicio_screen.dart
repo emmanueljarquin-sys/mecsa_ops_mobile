@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../utils/mensajes_error.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -144,7 +145,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('GPS: $e'), backgroundColor: Colors.orange),
+          SnackBar(content: Text('No se pudo obtener tu ubicación GPS. Activa la ubicación e intenta de nuevo.'), backgroundColor: Colors.orange),
         );
       }
     } finally {
@@ -250,7 +251,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al iniciar: $e'),
+            content: Text(mensajeError(e, accion: 'iniciar la visita')),
             backgroundColor: Colors.red,
           ),
         );
@@ -413,6 +414,52 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
         fotoOdometroFin: _fotoFin,
       );
 
+      if (result != null && result['offline'] == true) {
+        // Guardada en la cola: el kilometraje y el monto los calcula el
+        // servidor cuando se suba.
+        if (mounted) {
+          provider.trackingService.stopTracking();
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Row(
+                children: [
+                  Icon(Icons.cloud_upload_outlined, color: Colors.orange.shade800, size: 32),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text('Visita guardada sin conexión',
+                        style: TextStyle(fontSize: 18)),
+                  ),
+                ],
+              ),
+              content: Text(
+                'Se subirá automáticamente cuando haya internet. '
+                'El kilometraje y el monto de viático se calcularán al subir.\n\n'
+                'Puntos GPS: ${_waypoints.length}',
+              ),
+              actions: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E293B),
+                  ),
+                  child: const Text('Ver Mis Visitas',
+                      style: TextStyle(color: Colors.white)),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
       if (result != null) {
         final km = result['km_recorridos'] ?? 0;
         final dur = result['duracion_minutos'] ?? 0;
@@ -482,7 +529,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al finalizar: $e'),
+            content: Text(mensajeError(e, accion: 'finalizar la visita')),
             backgroundColor: Colors.red,
           ),
         );

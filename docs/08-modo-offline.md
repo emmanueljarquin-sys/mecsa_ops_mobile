@@ -23,38 +23,82 @@ flowchart TD
 - La caché se separa por usuario (`email:clave`) y se borra al cerrar sesión.
 - `ConnectivityService` ([connectivity_service.dart](../lib/services/connectivity_service.dart)) combina `connectivity_plus` (¿hay red?) con un sondeo HTTP al REST de Supabase con timeout de 4 s (¿hay internet real?). Se re-sondea al cambiar de red, al reintentar desde el banner y tras una carga fallida. `OfflineService.hayConexion()` ahora usa este sondeo, así que en Wi-Fi sin salida un registro se encola de inmediato en vez de agotar los timeouts de subida.
 - `fetchData()` ya no deja pantallas vacías en silencio: `loadError` siempre queda con un mensaje cuando algo falló, y las consultas que antes vaciaban su lista al fallar (visitas, proyectos, empleados, departamentos, empresas) ahora conservan lo anterior.
+- El empleado (`currentEmployeeId` y permisos) se guarda en la caché (`perfil`). Con sesión abierta o caché, `fetchData()` no espera la consulta de `Empleados`: la refresca en paralelo. Solo la espera cuando no hay ningún id conocido, y si aun así falla queda como fallo visible en el banner.
+
+### Sesión expirada
+
+```mermaid
+flowchart TD
+    A["Arranque con sesión guardada"] --> B{"token vencido?"}
+    B -->|no| F["fetchData()"]
+    B -->|sí| R["renovarSesion(silencioso)"]
+    R -->|"OK"| F
+    R -->|"falla por red<br/>(AuthRetryableFetchException, 5xx, timeout)"| K["se mantiene la sesión<br/>banner naranja + caché"]
+    R -->|"servidor rechaza el refresh token<br/>(AuthException 4xx)"| O["gotrue cierra sesión →<br/>LoginScreen con loginNotice"]
+    F -->|"401 / JWT expired<br/>(PostgrestException PGRST301)"| M["sessionExpired = true →<br/>modal en HomeScreen"]
+    M -->|"RENOVAR SESIÓN"| R2["renovarSesion()"]
+    R2 -->|OK| F
+    R2 -->|"red"| M
+    R2 -->|"rechazado"| O
+    M -->|"CERRAR SESIÓN"| O
+    T["evento tokenRefreshed<br/>(refresh automático de gotrue)"] --> C["cierra el modal si estaba abierto"]
+```
+
+La clasificación vive en `_clasificarErrorSesion()`: `AuthRetryableFetchException` y `statusCode` 5xx son red; cualquier otra `AuthException` es sesión inválida; `PostgrestException` con código `PGRST301`/`401` o mensaje con `jwt` es sesión inválida. Todo queda en el log, módulo `auth`.
 
 ## 8.1 Qué se persiste y dónde
 
-| Dato | Dónde | Formato |
-|------|-------|---------|
-| Cola de operaciones | `SharedPreferences`, clave `offline_queue_v1` | JSON de una lista de mapas |
-| Fotos pendientes | `<documentos de la app>/offline_photos/<uuid>.<ext>` | Copia del archivo original |
+Todo vive en la base SQLite `mecsa_ops_local.db` ([local_db.dart](../lib/services/local_db.dart), versión 3). Las fotos pendientes se copian a `<documentos de la app>/offline_photos/<uuid>.<ext>`.
 
-No usa SQLite, Hive ni Isar. Cada operación en la cola tiene esta forma:
+| Tabla | Qué guarda | Quién la escribe |
+|-------|------------|------------------|
+| `cache` | Última respuesta JSON de cada consulta (`email:clave`) | `CacheService` |
+| `offline_queue` | Cola de operaciones. `estado` = `pendiente` o `subido`; las subidas se conservan 30 días como historial con `synced_ms` y `remote_id` | `OfflineService` |
+| `reservas` | Reservas del usuario tal como las devuelve el API (con el join de vehículo). Se **sobrescriben completas** en cada sincronización: el servidor manda | `ReservasLocal` desde `_fetchMyReservations()` |
+| `liquidaciones` | Liquidaciones del **último mes** (30 días) con sus facturas, traídas al iniciar sesión y en cada `fetchData()` (`local = 0`), más las creadas sin conexión (`local = 1`, id `local-…`) | `LiquidacionesLocal` |
+| `id_map` | `local-<uuid>` → id real del servidor, para operaciones encadenadas | `OfflineService` |
+| `app_log` | Log de diagnóstico | `AppLogger` |
+
+La cola de versiones anteriores (`SharedPreferences`, clave `offline_queue_v1`) se migra a `offline_queue` la primera vez que arranca `OfflineService.init()` y se borra.
+
+Cada operación en la cola (`payload`) tiene esta forma:
 
 ```json
 {
   "id": "uuid",
-  "type": "registro_vehiculo | factura | liquidacion",
+  "type": "registro_vehiculo | factura | liquidacion | visita_crear | visita_inicio | visita_waypoints | visita_fin",
   "record": { "...campos a insertar..." },
   "photos": { "frente": "/ruta/local.jpg", "kilometraje": "/ruta/local2.jpg" },
   "children": [ { "record": {...}, "photos": { "documento": "/ruta.jpg" } } ],
   "createdAt": "2026-09-11T14:30:00Z",
+  "localId": "local-uuid (solo si el registro se creó offline)",
   "attempts": 0,
-  "lastError": "..."
+  "lastError": "...",
+  "estado": "pendiente | subido",
+  "syncedMs": 1789150000000,
+  "remoteId": "id que devolvió el servidor"
 }
 ```
 
 `children` solo se usa para el tipo `liquidacion`: son las facturas que dependen del id que devuelva el servidor.
 
+### Ids locales
+
+Una visita o liquidación creada sin conexión recibe un id `local-<uuid>` (`OfflineService.nuevoIdLocal()`). La app la muestra en las listas con el icono de "pendiente de subir" y las operaciones posteriores (waypoints, finalizar, facturas) guardan ese id local. Al subir la operación padre, `id_map` registra el id real; las operaciones hijas lo resuelven con `resolverId()` y, si el padre aún no subió, fallan con "aún no se ha subido" y se reintentan en el siguiente `flush`. Como la cola se procesa en orden de creación, el padre siempre va primero.
+
 ## 8.2 Quién encola
 
 | Tipo | Pantalla | Cuándo |
 |------|----------|--------|
-| `registro_vehiculo` | `VehicleRegisterScreen` | Sin conexión, o si el guardado en línea devolvió `false` o lanzó excepción |
-| `liquidacion` | `LiquidacionFormScreen` | Sin conexión al guardar una liquidación **nueva** |
+| `registro_vehiculo` | `VehicleRegisterScreen` | Sin conexión, o si el guardado en línea devolvió `false` o lanzó excepción. Aplica a salida y entrada de una reserva aprobada; el detalle de la reserva muestra un aviso naranja mientras esté pendiente |
+| `liquidacion` | `LiquidacionFormScreen` | Sin conexión al guardar una liquidación **nueva**. Además se guarda en la tabla `liquidaciones` (`local = 1`) para verla en la lista |
 | `factura` | `LiquidacionDetailScreen` | Sin conexión al agregar una factura **nueva** a una liquidación existente |
+| `visita_crear` | `VisitaFormScreen` → `AppProvider.createVisita` | Sin conexión al registrar una visita desde el formulario (fotos incluidas) |
+| `visita_inicio` | `VisitaInicioScreen` → `startVisitaV2` | Sin conexión al iniciar una visita "en ruta"; devuelve un id local y el viaje sigue normal |
+| `visita_waypoints` | `updateVisitaWaypointsV2` | Sin conexión los waypoints solo se guardan en caché; viajan completos con `visita_fin` |
+| `visita_fin` | `VisitaInicioScreen` → `finishVisitaV2` | Sin conexión (o visita con id local). El kilometraje y el monto los calcula `finish_visita.php` al subir |
+
+**Reservas: nunca se encolan.** Crear una reserva exige validar disponibilidad y choques de horario contra el servidor en el momento, así que `createReservation()` rechaza sin conexión y el formulario desactiva el botón con un aviso rojo. Lo que sí funciona sin red es **ver** las reservas (tabla `reservas`) y **registrar salida/entrada** de una aprobada (se encola `registro_vehiculo`).
 
 Editar (no crear) siempre requiere conexión.
 
@@ -83,10 +127,20 @@ flowchart TD
 
 Reglas:
 
-- **Nunca se borra una operación hasta que el servidor confirma.** En el peor caso queda visible como pendiente en el banner del Dashboard.
+- **Nunca se borra una operación hasta que el servidor confirma.** Cuando confirma, la fila pasa a `estado = 'subido'` con `synced_ms` (no se borra: queda como historial 30 días, consultable con `OfflineService.historial()`).
 - No hay límite de reintentos ni backoff. Cada `flush` intenta todo lo pendiente.
 - Solo corre un `flush` a la vez (`_flushing`).
-- `hayConexion()` consulta `connectivity_plus`. Si la consulta falla, asume que sí hay red y deja que el upload real decida.
+- `hayConexion()` usa el sondeo real de `ConnectivityService`. Si la consulta falla, asume que sí hay red y deja que el upload real decida.
+
+### Cuándo se sincroniza sola
+
+1. Al arrancar (`flush()` inicial).
+2. Cuando `connectivity_plus` reporta que apareció una red.
+3. Cuando `ConnectivityService` pasa de "sin internet" a "internet OK" (sondeo real). En ese momento `AppProvider` también hace `refreshSilent()` para traer reservas, liquidaciones y visitas frescas.
+4. Cada 45 segundos (`OfflineService.retryInterval`) mientras haya pendientes: cubre el Wi-Fi que recupera salida sin cambiar de interfaz.
+5. Al encolar algo nuevo y al tocar "Sincronizar" en el Dashboard.
+
+Cuando una operación sube, `OfflineService.onOperacionSubida` avisa a `AppProvider`, que refresca la lista afectada (liquidaciones, visitas o reservas) y así el registro local pendiente se reemplaza por el del servidor.
 
 ## 8.4 Sincronización de un registro de vehículo
 
@@ -144,11 +198,26 @@ sequenceDiagram
 
 El Dashboard tiene un `Consumer<OfflineService>` que muestra un banner con `pendingCount` y un botón "Subir ahora" que llama `flush()`. Mientras `isFlushing` es `true` muestra un spinner.
 
-## 8.7 Limitaciones conocidas
+## 8.7 Copia de seguridad diaria (Perfil → Copias de seguridad)
 
-- La caché de lectura es "última respuesta conocida": no hay sincronización incremental ni resolución de conflictos. Sin conexión se puede **ver**, no crear reservas ni visitas.
-- Solo tres tipos de operación en la cola de escritura. Visitas, auditorías, reservas y correcciones no funcionan sin conexión.
-- `liquidacion` y `factura` no tienen chequeo de duplicados. Un timeout después de que el servidor insertó puede generar registros repetidos en el siguiente `flush`.
+`SyncService` ([sync_service.dart](../lib/services/sync_service.dart)) es el equivalente a la copia de seguridad de WhatsApp:
+
+1. Sube todo lo pendiente (`OfflineService.flush()`).
+2. Vuelve a bajar reservas, liquidaciones del último mes (con facturas) y visitas del usuario y las guarda en SQLite/caché, sobrescribiendo con lo que diga el API.
+3. Mientras corre muestra la notificación "Sincronizando con el servidor…" (canal `channel_sync`, con barra de progreso) y al terminar "Sincronización completa" con el resumen.
+
+Se ejecuta a mano con "Sincronizar ahora" y automáticamente todos los días a la hora configurada (por defecto **02:00**) con WorkManager (`Workmanager().registerPeriodicTask`, frecuencia 24 h, `initialDelay` hasta la próxima hora elegida). El callback `syncCallbackDispatcher` vive en `main.dart` porque el isolate de fondo arranca vacío: inicializa logger, Supabase (la sesión persiste en el dispositivo), `ConnectivityService` y `OfflineService`, y llama `SyncService.sincronizar()`.
+
+Opciones (SharedPreferences `backup_*`): activar/desactivar, hora, y red permitida: **solo WiFi** (constraint `NetworkType.unmetered`, por defecto) o **WiFi o datos móviles** (`NetworkType.connected`). La copia manual y la sincronización al recuperar conexión ignoran esa restricción. Android puede mover la ejecución unos minutos (Doze, batería baja); no es un reloj exacto.
+
+La pantalla ([backup_settings_screen.dart](../lib/screens/backup_settings_screen.dart)) muestra además la lista de pendientes con su último error y el historial de lo subido recientemente (`OfflineService.historial()`).
+
+## 8.8 Limitaciones conocidas
+
+- La caché de lectura es "última respuesta conocida": no hay sincronización incremental ni resolución de conflictos.
+- Crear reservas, editar visitas ya subidas, auditorías y correcciones siguen requiriendo conexión.
+- `liquidacion`, `factura` y `visita_fin` no tienen chequeo de duplicados. Un timeout después de que el servidor insertó puede generar registros repetidos en el siguiente `flush`. `visita_inicio` y `visita_crear` sí son idempotentes vía `id_map`.
 - Si sube la foto pero falla el `INSERT`, el reintento vuelve a subir la foto y deja un archivo huérfano en Storage.
-- Toda la cola vive en un solo string JSON en `SharedPreferences`, cargado completo en memoria. Adecuado para decenas de operaciones, no para miles.
-- La cola de escritura sigue en `SharedPreferences`; la base SQLite (`LocalDb`) ya existe y sería el destino natural si se necesita consultarla o escalarla.
+- Una visita iniciada sin conexión no se puede abrir en `VisitaDetailScreen` ni editar hasta que suba (id local).
+- La lista de liquidaciones sin red muestra solo el último mes (lo que hay en SQLite); no hay paginación offline.
+- Los mensajes de error para el usuario salen de `mensajeError()` ([mensajes_error.dart](../lib/utils/mensajes_error.dart)): red, timeout, sesión, permisos y duplicados tienen texto fijo; el detalle técnico va solo al log.

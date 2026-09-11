@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../utils/mensajes_error.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -221,7 +222,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        _snack('Error al guardar: $e', error: true);
+        _snack(mensajeError(e, accion: 'guardar la auditoría'), error: true);
       }
     }
   }
@@ -252,7 +253,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text('Error: $_error'))
+              ? Center(child: Text(mensajeError(_error, accion: 'cargar la auditoría')))
               : Column(
                   children: [
                     _stepIndicator(),

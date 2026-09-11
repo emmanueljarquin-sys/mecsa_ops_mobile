@@ -4,6 +4,9 @@ import '../providers/app_provider.dart';
 import '../services/app_logger.dart';
 import 'app_log_screen.dart';
 import 'log_settings_screen.dart';
+import 'backup_settings_screen.dart';
+import '../services/sync_service.dart';
+import '../services/offline_service.dart';
 
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
@@ -128,11 +131,11 @@ class ProfileScreen extends StatelessWidget {
                     child: CircleAvatar(
                       radius: 50,
                       backgroundColor: Colors.grey[200],
-                      backgroundImage: hasPhoto
-                          ? NetworkImage(photoUrl!)
-                          : const NetworkImage(
-                              'https://i.pravatar.cc/150?img=11',
-                            ),
+                      backgroundImage: hasPhoto ? NetworkImage(photoUrl!) : null,
+                      onBackgroundImageError: hasPhoto ? (_, __) {} : null,
+                      child: hasPhoto
+                          ? null
+                          : const Icon(Icons.person, size: 50, color: Colors.grey),
                     ),
                   ),
                   GestureDetector(
@@ -248,6 +251,52 @@ class ProfileScreen extends StatelessWidget {
                 context,
                 MaterialPageRoute(builder: (_) => const LogSettingsScreen()),
               ),
+            ),
+
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 8),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Copias de seguridad",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Sube lo guardado sin conexión y mantiene una copia de tus datos en el teléfono.",
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Consumer2<SyncService, OfflineService>(
+              builder: (context, sync, offline, _) {
+                final hh = sync.hour.toString().padLeft(2, '0');
+                final mm = sync.minute.toString().padLeft(2, '0');
+                final sub = sync.isRunning
+                    ? (sync.pasoActual ?? 'Sincronizando…')
+                    : offline.pendingCount > 0
+                        ? '${offline.pendingCount} pendiente(s) de subir · diaria a las $hh:$mm'
+                        : sync.enabled
+                            ? 'Todo al día · diaria a las $hh:$mm'
+                            : 'Copia automática desactivada';
+                return ListTile(
+                  leading: Icon(
+                    sync.isRunning ? Icons.sync : Icons.backup_outlined,
+                    color: offline.pendingCount > 0 ? Colors.orange : Colors.blue,
+                  ),
+                  title: const Text("Copia de seguridad"),
+                  subtitle: Text(sub),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BackupSettingsScreen()),
+                  ),
+                );
+              },
             ),
 
             const SizedBox(height: 24),

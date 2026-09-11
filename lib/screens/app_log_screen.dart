@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../utils/mensajes_error.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -182,7 +183,7 @@ class _AppLogScreenState extends State<AppLogScreen> {
           error: e, stack: st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo exportar: $e')),
+          SnackBar(content: Text(mensajeError(e, accion: 'exportar el log'))),
         );
       }
     } finally {
@@ -250,7 +251,7 @@ class _AppLogScreenState extends State<AppLogScreen> {
           error: e, stack: st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo exportar: $e')),
+          SnackBar(content: Text(mensajeError(e, accion: 'exportar el log'))),
         );
       }
     } finally {

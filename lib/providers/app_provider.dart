@@ -13,7 +13,15 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../services/app_logger.dart';
 import '../services/cache_service.dart';
 import '../services/connectivity_service.dart';
+import '../services/liquidaciones_local.dart';
+import '../services/offline_service.dart';
+import '../utils/mensajes_error.dart';
+import '../services/reservas_local.dart';
+import '../services/sync_service.dart';
 import '../services/tracking_service.dart';
+
+/// Resultado de clasificar una excepción relacionada con la sesión.
+enum _SesionError { ninguno, red, invalida }
 
 class AppProvider extends ChangeNotifier {
   int _currentIndex = 0;
@@ -50,6 +58,16 @@ class AppProvider extends ChangeNotifier {
   DateTime? lastSyncAt;
   /// Nombres de consultas que fallaron en la carga actual (las que no relanzan).
   final List<String> _fallosCarga = [];
+  // ── Estado de sesión ────────────────────────────────────────────
+  /// La sesión guardada ya no sirve (JWT vencido/rechazado) pero todavía hay
+  /// refresh token: HomeScreen muestra un modal con "Renovar" / "Cerrar sesión".
+  bool sessionExpired = false;
+  /// Aviso para LoginScreen tras un cierre de sesión forzado.
+  String? loginNotice;
+  bool _renovandoSesion = false;
+  bool _sesionInvalidada = false;
+  bool get renovandoSesion => _renovandoSesion;
+
   /// Hay algo que mostrar (de red o de caché).
   bool get hasCachedData =>
       vehiculos.isNotEmpty ||
@@ -202,6 +220,7 @@ class AppProvider extends ChangeNotifier {
         errorMessage = e.toString();
         rethrow;
       }
+      _detectarSesionExpirada('empleado', e);
     }
   }
 
@@ -258,6 +277,9 @@ class AppProvider extends ChangeNotifier {
         totalVehiculos = vehiculos.length;
       }
       if (results[1].isNotEmpty) myReservations = results[1];
+      // La tabla `reservas` de SQLite manda sobre la caché JSON.
+      final reservasSql = await ReservasLocal.instance.listar(currentEmployeeId);
+      if (reservasSql.isNotEmpty) myReservations = reservasSql;
       if (results[2].isNotEmpty) {
         gastos = results[2];
         liquidacionesPendientes =
@@ -286,6 +308,114 @@ class AppProvider extends ChangeNotifier {
       log.w('cache', 'No se pudo cargar la caché', error: e);
       debugPrint('$st');
     }
+  }
+
+  // ── Manejo de sesión expirada ───────────────────────────────────
+  /// Distingue "falló por red" (mantener sesión, usar caché) de "el servidor
+  /// rechazó la sesión" (hay que renovar o volver a entrar).
+  static _SesionError _clasificarErrorSesion(Object e) {
+    if (e is AuthRetryableFetchException) return _SesionError.red;
+    if (e is AuthException) {
+      final sc = e.statusCode ?? '';
+      if (sc.startsWith('5')) return _SesionError.red;
+      return _SesionError.invalida; // 400/401/403, sesión ausente, JWT inválido
+    }
+    if (e is PostgrestException) {
+      final c = e.code ?? '';
+      final m = e.message.toLowerCase();
+      if (c == 'PGRST301' || c == '401' || m.contains('jwt')) {
+        return _SesionError.invalida;
+      }
+      return _SesionError.ninguno;
+    }
+    final s = e.toString().toLowerCase();
+    if (s.contains('jwt expired') || s.contains('invalid jwt')) {
+      return _SesionError.invalida;
+    }
+    return _SesionError.ninguno;
+  }
+
+  /// Marca la sesión como expirada (dispara el modal en HomeScreen).
+  void _marcarSesionExpirada(String origen, Object e) {
+    _sesionInvalidada = true;
+    if (sessionExpired) return;
+    sessionExpired = true;
+    log.w('auth', 'Sesión rechazada por el servidor',
+        data: {'origen': origen}, error: e);
+    notifyListeners();
+  }
+
+  /// Si una excepción es de sesión inválida, marca el estado. Devuelve true
+  /// si lo era (para que quien llama no la trate como error de red).
+  bool _detectarSesionExpirada(String origen, Object e) {
+    if (_clasificarErrorSesion(e) != _SesionError.invalida) return false;
+    _marcarSesionExpirada(origen, e);
+    return true;
+  }
+
+  /// Intenta renovar la sesión con el refresh token. Devuelve true si quedó
+  /// renovada. Si el servidor rechaza el refresh token, gotrue cierra la
+  /// sesión solo y la app vuelve al login con [loginNotice].
+  Future<bool> renovarSesion({bool silencioso = false}) async {
+    if (_renovandoSesion) return false;
+    _renovandoSesion = true;
+    if (!silencioso) notifyListeners();
+    final sw = Stopwatch()..start();
+    try {
+      final res = await _supabase.auth
+          .refreshSession()
+          .timeout(const Duration(seconds: 12));
+      final ok = res.session != null;
+      log.i('auth', ok ? 'Sesión renovada' : 'refreshSession sin sesión', data: {
+        'ms': sw.elapsedMilliseconds,
+        'expira': res.session?.expiresAt,
+      });
+      if (ok) {
+        sessionExpired = false;
+        _sesionInvalidada = false;
+        loadError = null;
+        notifyListeners();
+        if (!silencioso) fetchData();
+      }
+      return ok;
+    } catch (e, st) {
+      final kind = _clasificarErrorSesion(e);
+      if (kind == _SesionError.invalida) {
+        log.e('auth', 'El servidor rechazó el refresh token',
+            data: {'ms': sw.elapsedMilliseconds}, error: e, stack: st);
+        _sesionInvalidada = true;
+        loginNotice = 'Tu sesión expiró. Volvé a iniciar sesión.';
+        // gotrue normalmente ya cerró la sesión; si no, lo hacemos nosotros.
+        if (user != null) {
+          try {
+            await _supabase.auth.signOut();
+          } catch (_) {}
+        }
+      } else {
+        log.w('auth', 'No se pudo renovar la sesión (red/timeout)',
+            data: {'ms': sw.elapsedMilliseconds}, error: e);
+        if (!silencioso) {
+          errorMessage =
+              'No se pudo renovar la sesión. Revisá la conexión e intentá de nuevo.';
+        }
+        connectivity.checkInternet(force: true);
+      }
+      return false;
+    } finally {
+      _renovandoSesion = false;
+      notifyListeners();
+    }
+  }
+
+  /// Al arrancar con sesión guardada: si el token ya venció, renovarlo antes
+  /// de cargar datos. Sin red se mantiene la sesión y se usa la caché.
+  Future<void> _verificarSesionAlArrancar() async {
+    final s = _supabase.auth.currentSession;
+    if (s == null) return;
+    if (!s.isExpired) return;
+    log.i('auth', 'Token vencido al arrancar; intentando renovar',
+        data: {'expiraba': s.expiresAt});
+    await renovarSesion(silencioso: true);
   }
 
   /// Registra una consulta que falló pero no detiene la carga (mantiene los
@@ -322,18 +452,49 @@ class AppProvider extends ChangeNotifier {
         'tokenExpira': data.session?.expiresAt,
       });
       if (data.event == AuthChangeEvent.signedIn) {
+        loginNotice = null;
+        sessionExpired = false;
+        _sesionInvalidada = false;
         cache.setScope(data.session?.user.email ?? user?.email);
         await _loadFromCache();
         fetchData();
+      } else if (data.event == AuthChangeEvent.tokenRefreshed) {
+        // El refresh automático funcionó: si había modal de sesión, cerrarlo.
+        if (sessionExpired) {
+          sessionExpired = false;
+          _sesionInvalidada = false;
+          notifyListeners();
+          fetchData();
+        }
       } else if (data.event == AuthChangeEvent.signedOut) {
+        // Si el cierre lo provocó un refresh rechazado (gotrue cierra solo),
+        // explicar en el login por qué.
+        if (_sesionInvalidada) {
+          loginNotice ??= 'Tu sesión expiró. Volvé a iniciar sesión.';
+        }
+        sessionExpired = false;
+        _sesionInvalidada = false;
         _unsubscribeFromLiquidaciones(); // Clean up
+        final empSaliente = currentEmployeeId;
         _clearData();
         await cache.clearScope();
+        if (empSaliente != null) {
+          await ReservasLocal.instance.limpiarEmpleado(empSaliente);
+          await LiquidacionesLocal.instance.limpiarEmpleado(empSaliente);
+        }
         notifyListeners();
       }
     }, onError: (e, st) {
-      log.e('auth', 'Error en el stream de sesión (posible refresh fallido)',
-          error: e, stack: st);
+      final kind = _clasificarErrorSesion(e);
+      if (kind == _SesionError.invalida) {
+        // gotrue ya emitió (o va a emitir) signedOut; dejar el aviso listo.
+        _sesionInvalidada = true;
+        log.e('auth', 'Refresh de sesión rechazado por el servidor',
+            error: e, stack: st);
+      } else {
+        log.w('auth', 'Refresh de sesión falló por red; se mantiene la sesión',
+            error: e);
+      }
     });
 
     if (firebaseAvailable) {
@@ -342,8 +503,60 @@ class AppProvider extends ChangeNotifier {
 
     _loadGpsPreferences();
     _checkAppVersion(); // Check for updates
-    // Primero lo guardado (instantáneo, funciona sin red); luego la red.
-    _loadFromCache().whenComplete(fetchData);
+
+    // Al recuperar internet real: refrescar datos y vaciar la cola offline.
+    _wasOnline = connectivity.isOnline;
+    connectivity.addListener(_onConectividadCambio);
+    // Cuando la cola sube algo, refrescar la lista afectada.
+    OfflineService.instance.onOperacionSubida = _onOperacionOfflineSubida;
+    // Cuando termina una copia de seguridad (manual o diaria), recargar lo
+    // que bajó a SQLite.
+    SyncService.instance.addListener(_onSyncCambio);
+    SyncService.instance.cargarPrefs();
+    // Primero lo guardado (instantáneo, funciona sin red); luego verificar
+    // que el token siga vigente y por último la red.
+    _loadFromCache()
+        .whenComplete(_verificarSesionAlArrancar)
+        .whenComplete(fetchData);
+  }
+
+  bool _wasOnline = true;
+  bool _syncEstabaCorriendo = false;
+
+  void _onSyncCambio() {
+    final corriendo = SyncService.instance.isRunning;
+    if (_syncEstabaCorriendo && !corriendo && user != null) {
+      _loadFromCache().then((_) => refreshSilent());
+    }
+    _syncEstabaCorriendo = corriendo;
+  }
+
+  void _onConectividadCambio() {
+    final online = connectivity.isOnline;
+    if (online && !_wasOnline && user != null) {
+      log.i('conectividad', 'Internet recuperado: resincronizando datos');
+      OfflineService.instance.flush();
+      refreshSilent();
+    }
+    _wasOnline = online;
+  }
+
+  void _onOperacionOfflineSubida(String type, Map<String, dynamic> op) {
+    switch (type) {
+      case 'liquidacion':
+      case 'factura':
+        _fetchViaticos().then((_) => notifyListeners()).catchError((_) {});
+        break;
+      case 'visita_crear':
+      case 'visita_inicio':
+      case 'visita_waypoints':
+      case 'visita_fin':
+        _fetchRutas().then((_) => notifyListeners());
+        break;
+      case 'registro_vehiculo':
+        refreshSilent();
+        break;
+    }
   }
 
   /// Limpia todo el estado de datos al cerrar sesión.
@@ -525,7 +738,7 @@ class AppProvider extends ChangeNotifier {
       log.e('auth', 'Login falló', data: {'email': email}, error: e, stack: st);
       errorMessage = e.toString().contains("pendiente de activación")
           ? e.toString()
-          : "Error al iniciar sesión: ${e.toString()}";
+          : mensajeError(e, accion: 'iniciar sesión');
       return false;
     } finally {
       isLoading = false;
@@ -552,7 +765,7 @@ class AppProvider extends ChangeNotifier {
       return false;
     } catch (e) {
       debugPrint("Reset password error: $e");
-      errorMessage = "Error al solicitar recuperación: ${e.toString()}";
+      errorMessage = mensajeError(e, accion: 'enviar el correo de recuperación');
       return false;
     } finally {
       isLoading = false;
@@ -644,7 +857,7 @@ class AppProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint("SignUp error: $e");
-      errorMessage = "Error al crear cuenta: ${e.toString()}";
+      errorMessage = mensajeError(e, accion: 'crear la cuenta');
       return false;
     } finally {
       isLoading = false;
@@ -689,23 +902,7 @@ class AppProvider extends ChangeNotifier {
           ));
 
   /// Mensaje corto y entendible para el banner según el tipo de error.
-  static String _describirError(Object e) {
-    final s = e.toString();
-    if (e is TimeoutException) {
-      return 'El servidor tardó demasiado en responder. ($s)';
-    }
-    if (e is SocketException ||
-        s.contains('Failed host lookup') ||
-        s.contains('Connection refused') ||
-        s.contains('Network is unreachable') ||
-        s.contains('ClientException')) {
-      return 'No se pudo conectar con el servidor. ($s)';
-    }
-    if (s.contains('JWT') || s.contains('401') || s.contains('expired')) {
-      return 'La sesión no es válida o expiró. Cerrá sesión y volvé a entrar. ($s)';
-    }
-    return s;
-  }
+  static String _describirError(Object e) => mensajeError(e);
 
   Future<void> fetchData() async {
     isLoading = true;
@@ -728,14 +925,22 @@ class AppProvider extends ChangeNotifier {
 
       if (user == null) return;
 
-      // 1. First lookup Employee ID (needed for reservations/viaticos filtering)
-      await _consulta('empleado', _fetchCurrentEmployeeId);
-      if (currentEmployeeId == null) {
-        log.w('fetchData', 'Sin currentEmployeeId: reservas y viáticos no se cargarán');
+      // 1. Empleado (necesario para filtrar reservas/viáticos/visitas).
+      //    Si ya está resuelto en memoria (sesión abierta o caché SQLite) no
+      //    bloquea: se refresca en paralelo con el resto. Solo se espera
+      //    cuando no hay ningún id conocido.
+      final bool empleadoConocido = currentEmployeeId != null;
+      if (!empleadoConocido) {
+        await _consulta('empleado', _fetchCurrentEmployeeId);
+        if (currentEmployeeId == null) {
+          _fallo('empleado',
+              'No se pudo resolver el empleado de ${user?.email}; reservas, viáticos y visitas no se cargarán');
+        }
       }
 
       // 2. Fetch all data in parallel
       await Future.wait([
+        if (empleadoConocido) _consulta('empleado', _fetchCurrentEmployeeId),
         _consulta('vehiculos', _fetchFlotilla),
         _consulta('viaticos', _fetchViaticos),
         _consulta('rutas', _fetchRutas),
@@ -766,11 +971,15 @@ class AppProvider extends ChangeNotifier {
           data: {'ms': sw.elapsedMilliseconds}, error: e, stack: st);
       if (user != null) {
         final desactivada = e.toString().contains("desactivada");
-        errorMessage = desactivada ? e.toString() : "Error de conexión: $e";
+        errorMessage = desactivada ? e.toString() : mensajeError(e, accion: 'cargar los datos');
         loadError = desactivada ? e.toString() : _describirError(e);
-        // Sondear internet para que el banner distinga "sin internet" de
-        // "error del servidor".
-        connectivity.checkInternet(force: true);
+        if (!desactivada && _detectarSesionExpirada('fetchData', e)) {
+          loadError = 'La sesión expiró. Renovála o volvé a iniciar sesión.';
+        } else {
+          // Sondear internet para que el banner distinga "sin internet" de
+          // "error del servidor".
+          connectivity.checkInternet(force: true);
+        }
       }
     } finally {
       isLoading = false;
@@ -824,6 +1033,7 @@ class AppProvider extends ChangeNotifier {
           })
           .toList();
       cache.put('reservas', myReservations);
+      await ReservasLocal.instance.guardar(currentEmployeeId!, myReservations);
 
       // Post-process to ensure clean structure similar to vehicle list if needed
       // but simpler to just pass raw Map to UI.
@@ -847,6 +1057,7 @@ class AppProvider extends ChangeNotifier {
             })
             .toList();
         cache.put('reservas', myReservations);
+        await ReservasLocal.instance.guardar(currentEmployeeId!, myReservations);
       } catch (e2, st2) {
         log.e('fetchData', 'Reservas: fallback también falló',
             error: e2, stack: st2);
@@ -910,20 +1121,52 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  /// Liquidaciones del ÚLTIMO MES del usuario (con sus facturas). Se guardan
+  /// en SQLite (tabla `liquidaciones`) para consultarlas sin conexión.
   Future<void> _fetchViaticos() async {
     try {
       if (currentEmployeeId == null) return;
+
+      final desde = DateTime.now().subtract(const Duration(days: 30));
+      final desdeStr = desde.toIso8601String().split('T')[0];
 
       final res = await _supabase
           .schema('viaticos')
           .from('liquidaciones')
           .select()
-          .eq('empleado_id', currentEmployeeId!);
-      liquidacionesPendientes = (res as List)
-          .where((e) => e['estado'] != 'Aprobado')
-          .length;
+          .eq('empleado_id', currentEmployeeId!)
+          .gte('fecha', desdeStr)
+          .order('created_at', ascending: false);
 
-      gastos = res
+      final rows = List<Map<String, dynamic>>.from(res);
+
+      // Facturas de esas liquidaciones en una sola consulta.
+      final ids = rows.map((r) => r['id'].toString()).toList();
+      if (ids.isNotEmpty) {
+        try {
+          final fres = await _supabase
+              .schema('viaticos')
+              .from('facturas')
+              .select()
+              .inFilter('liquidacion_id', ids);
+          final porLiq = <String, List<Map<String, dynamic>>>{};
+          for (final f in List<Map<String, dynamic>>.from(fres)) {
+            porLiq.putIfAbsent(f['liquidacion_id'].toString(), () => []).add(f);
+          }
+          for (final r in rows) {
+            r['facturas'] = porLiq[r['id'].toString()] ?? [];
+          }
+        } catch (e) {
+          log.w('fetchData', 'Facturas del último mes fallaron', error: e);
+        }
+      }
+
+      liquidacionesPendientes = rows.where((e) {
+        final est = (e['estado'] ?? '').toString().toLowerCase();
+        return est != 'aprobada' && est != 'aprobado';
+      }).length;
+
+      gastos = rows
           .map(
             (g) => {
               'id': g['id'].toString(),
@@ -936,6 +1179,7 @@ class AppProvider extends ChangeNotifier {
           .toList()
           .cast<Map<String, dynamic>>();
       cache.put('gastos', gastos);
+      await LiquidacionesLocal.instance.guardarRemotas(currentEmployeeId!, rows);
     } catch (e) {
       debugPrint("Error loading viaticos: $e");
       rethrow;
@@ -953,7 +1197,15 @@ class AppProvider extends ChangeNotifier {
           .eq('empleado_id', currentEmployeeId!)
           .order('fecha', ascending: false);
 
-      visitas = List<Map<String, dynamic>>.from(resVisitas);
+      // Las creadas sin conexión (id local) se conservan al frente hasta que
+      // la cola las suba y vuelvan con id real.
+      final pendientes = OfflineService.instance.pendientes;
+      final locales = visitas
+          .where((v) =>
+              esIdLocal(v['id']) &&
+              pendientes.any((o) => o['localId'] == v['id'].toString()))
+          .toList();
+      visitas = [...locales, ...List<Map<String, dynamic>>.from(resVisitas)];
 
       // Conteo para el dashboard
       rutasActivas = visitas.where((v) => v['estado'] == 'en_curso').length;
@@ -962,6 +1214,25 @@ class AppProvider extends ChangeNotifier {
       // Se mantienen las visitas previas (o de caché) en vez de vaciar.
       _fallo('visitas', e);
     }
+  }
+
+  /// Inserta (o reemplaza) una visita creada sin conexión en la lista local y
+  /// la persiste en caché para que sobreviva reinicios.
+  void _agregarVisitaLocal(Map<String, dynamic> v) {
+    visitas.removeWhere((x) => x['id'].toString() == v['id'].toString());
+    visitas.insert(0, v);
+    rutasActivas = visitas.where((x) => x['estado'] == 'en_curso').length;
+    cache.put('visitas', visitas);
+    notifyListeners();
+  }
+
+  void _actualizarVisitaLocal(String id, Map<String, dynamic> cambios) {
+    final i = visitas.indexWhere((x) => x['id'].toString() == id);
+    if (i < 0) return;
+    visitas[i] = {...visitas[i], ...cambios};
+    rutasActivas = visitas.where((x) => x['estado'] == 'en_curso').length;
+    cache.put('visitas', visitas);
+    notifyListeners();
   }
 
   Future<void> refreshVisitas() async {
@@ -978,12 +1249,41 @@ class AppProvider extends ChangeNotifier {
 
       final data = {...visitaData, 'empleado_id': currentEmployeeId};
 
+      // ── SIN CONEXIÓN: encolar y mostrarla localmente ──
+      if (!await OfflineService.instance.hayConexion()) {
+        final localId = OfflineService.instance.nuevoIdLocal();
+        final fotosLocales = <String, String>{};
+        final fotosRemotas = <String>[];
+        for (final f in (data['fotos'] as List? ?? [])) {
+          final s = f.toString();
+          if (s.startsWith('http')) {
+            fotosRemotas.add(s);
+          } else if (s.isNotEmpty) {
+            fotosLocales['foto_${fotosLocales.length}'] = s;
+          }
+        }
+        data['fotos'] = fotosRemotas;
+        await OfflineService.instance.enqueue(
+          type: 'visita_crear',
+          record: data,
+          photos: fotosLocales,
+          localId: localId,
+        );
+        _agregarVisitaLocal({
+          ...data,
+          'id': localId,
+          'fotos': [...fotosRemotas, ...fotosLocales.values],
+          '_pendiente': true,
+        });
+        return true;
+      }
+
       await _supabase.schema('visitas').from('visitas').insert(data);
       await _fetchRutas();
       return true;
     } catch (e) {
       debugPrint("Error creating visita: $e");
-      errorMessage = "Error al registrar visita: $e";
+      errorMessage = mensajeError(e, accion: 'registrar la visita');
       return false;
     } finally {
       isLoading = false;
@@ -996,6 +1296,12 @@ class AppProvider extends ChangeNotifier {
       isLoading = true;
       notifyListeners();
 
+      if (esIdLocal(id)) {
+        errorMessage = "Esta visita aún no se ha subido al servidor. "
+            "Podrás editarla cuando haya conexión.";
+        return false;
+      }
+
       await _supabase
           .schema('visitas')
           .from('visitas')
@@ -1006,7 +1312,7 @@ class AppProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint("Error updating visita: $e");
-      errorMessage = "Error al actualizar visita: $e";
+      errorMessage = mensajeError(e, accion: 'actualizar la visita');
       return false;
     } finally {
       isLoading = false;
@@ -1055,7 +1361,7 @@ class AppProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint("Error registering personal vehicle: $e");
-      errorMessage = "Error al registrar vehículo: $e";
+      errorMessage = mensajeError(e, accion: 'registrar el vehículo');
       return false;
     }
   }
@@ -1091,8 +1397,10 @@ class AppProvider extends ChangeNotifier {
     try {
       if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
 
+      final bool online = await OfflineService.instance.hayConexion();
+
       String? fotoUrl;
-      if (fotoOdometro != null) {
+      if (online && fotoOdometro != null) {
         fotoUrl = await uploadVisitaFoto(fotoOdometro);
       }
 
@@ -1112,6 +1420,24 @@ class AppProvider extends ChangeNotifier {
         'waypoints': [],
       };
 
+      // ── SIN CONEXIÓN: encolar inicio y trabajar con id local ──
+      if (!online) {
+        final localId = OfflineService.instance.nuevoIdLocal();
+        await OfflineService.instance.enqueue(
+          type: 'visita_inicio',
+          record: data,
+          photos: fotoOdometro != null ? {'odometro_inicio': fotoOdometro.path} : null,
+          localId: localId,
+        );
+        _agregarVisitaLocal({
+          ...data,
+          'id': localId,
+          'foto_odometro_inicio': fotoOdometro?.path,
+          '_pendiente': true,
+        });
+        return localId;
+      }
+
       final res = await _supabase
           .schema('visitas')
           .from('visitas')
@@ -1123,7 +1449,7 @@ class AppProvider extends ChangeNotifier {
       return res['id']?.toString();
     } catch (e) {
       debugPrint("Error starting visita V2: $e");
-      errorMessage = "Error al iniciar viaje: $e";
+      errorMessage = mensajeError(e, accion: 'iniciar el viaje');
       return null;
     }
   }
@@ -1133,6 +1459,12 @@ class AppProvider extends ChangeNotifier {
     List<Map<String, dynamic>> waypoints,
   ) async {
     try {
+      if (esIdLocal(id) || !await OfflineService.instance.hayConexion()) {
+        // Sin red (o visita creada offline): guardar en caché local. Los
+        // waypoints completos viajan con la operación de cierre.
+        _actualizarVisitaLocal(id, {'waypoints': waypoints});
+        return true;
+      }
       await _supabase
           .schema('visitas')
           .from('visitas')
@@ -1141,6 +1473,7 @@ class AppProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint("Error updating waypoints V2: $e");
+      _actualizarVisitaLocal(id, {'waypoints': waypoints});
       return false;
     }
   }
@@ -1166,10 +1499,38 @@ class AppProvider extends ChangeNotifier {
       );
       String? fotoUrl = visitaPrevia['foto_odometro_fin'];
 
+      // ── SIN CONEXIÓN (o visita aún no subida): encolar el cierre ──
+      if (esIdLocal(id) || !await OfflineService.instance.hayConexion()) {
+        final now = DateTime.now();
+        await OfflineService.instance.enqueue(
+          type: 'visita_fin',
+          record: {
+            'id': id,
+            'odometro_final': odometroFinal,
+            'observaciones': observaciones,
+            'proyectos_visitados': proyectosVisitados,
+            'waypoints': waypoints,
+            if (fotoOdometroFin == null && fotoUrl != null) 'foto_odometro_url': fotoUrl,
+          },
+          photos: fotoOdometroFin != null ? {'odometro_fin': fotoOdometroFin.path} : null,
+        );
+        _actualizarVisitaLocal(id, {
+          'estado': 'completada',
+          'hora_fin': now.toIso8601String().split('T')[1].substring(0, 8),
+          'odometro_final': double.tryParse(odometroFinal) ?? 0,
+          'observaciones': observaciones,
+          'proyectos_visitados': proyectosVisitados,
+          'waypoints': waypoints,
+          'foto_odometro_fin': fotoOdometroFin?.path ?? fotoUrl,
+          '_pendiente': true,
+        });
+        return {'success': true, 'offline': true};
+      }
+
       if (fotoOdometroFin != null) {
         fotoUrl = await uploadVisitaFoto(fotoOdometroFin);
         if (fotoUrl == null) {
-          errorMessage = "Error al subir la foto al servidor.";
+          errorMessage = "No se pudo subir la foto del odómetro. Revisa tu conexión e intenta de nuevo.";
           return null;
         }
       }
@@ -1197,16 +1558,16 @@ class AppProvider extends ChangeNotifier {
           await _fetchRutas();
           return Map<String, dynamic>.from(data);
         } else {
-          errorMessage = data['error'] ?? "Error desconocido en la API";
+          errorMessage = data['error']?.toString() ?? 'El servidor no pudo cerrar la visita. Intenta de nuevo.';
           return null;
         }
       } else {
-        errorMessage = "Error del servidor: ${response.statusCode}";
+        errorMessage = 'El servidor no pudo cerrar la visita (código ${response.statusCode}). Intenta de nuevo en unos minutos.';
         return null;
       }
     } catch (e) {
       debugPrint("Error finishing visita via PHP: $e");
-      errorMessage = "Error de red: $e";
+      errorMessage = mensajeError(e, accion: 'finalizar la visita');
       return null;
     } finally {
       isLoading = false;
@@ -1323,7 +1684,15 @@ class AppProvider extends ChangeNotifier {
       isLoading = true;
       notifyListeners();
 
-      if (user == null) throw "Usuario no autenticado"; // NEW
+      if (user == null) throw "Tu sesión no está activa. Vuelve a iniciar sesión."; // NEW
+
+      // Las reservas requieren conexión: hay que validar disponibilidad y
+      // choques de horario contra el servidor en el momento. Sin internet
+      // no se crea nada (ni se encola).
+      if (!await OfflineService.instance.hayConexion()) {
+        throw "Sin conexión a internet. Las reservas solo se pueden crear "
+            "con conexión.";
+      }
 
       // Use cached ID or fetch it // NEW
       if (currentEmployeeId == null) {
@@ -1331,7 +1700,7 @@ class AppProvider extends ChangeNotifier {
         await _fetchCurrentEmployeeId(); // NEW
         if (currentEmployeeId == null) {
           // NEW
-          throw "No se encontró perfil de empleado para ${user!.email}"; // NEW
+          throw "Tu usuario no tiene ficha de empleado asociada (${user!.email}). Contacta al administrador."; // NEW
         }
       } // NEW
 
@@ -1442,12 +1811,61 @@ class AppProvider extends ChangeNotifier {
           },
           error: e,
           stack: st);
-      errorMessage = "Error al crear reserva: ${e.toString()}";
+      errorMessage = mensajeError(e, accion: 'crear la reserva');
       return false;
     } finally {
       isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Registros de salida/entrada de una reserva. Con conexión consulta el
+  /// servidor y guarda el resultado en caché; sin conexión devuelve la caché.
+  /// En ambos casos agrega los registros que están en la cola offline
+  /// (marcados con `_pendiente: true`) para que la pantalla sepa que la
+  /// salida/entrada ya se hizo aunque todavía no haya subido.
+  Future<List<Map<String, dynamic>>> getRegistrosReserva(String reservaId) async {
+    final key = 'registros:$reservaId';
+    List<Map<String, dynamic>> regs = [];
+    bool remotoOk = false;
+    if (await OfflineService.instance.hayConexion()) {
+      try {
+        final res = await _supabase
+            .schema('flotilla')
+            .from('registros_vehiculos')
+            .select()
+            .eq('reserva_id', reservaId)
+            .timeout(const Duration(seconds: 15));
+        regs = List<Map<String, dynamic>>.from(res);
+        remotoOk = true;
+        cache.put(key, regs);
+      } catch (e) {
+        log.w('reservas', 'Registros de reserva: falló remoto, usando caché',
+            error: e);
+      }
+    }
+    if (!remotoOk) {
+      regs = (await cache.get(key))?.asList() ?? [];
+    }
+    // Pendientes en la cola (aún no subidos).
+    for (final op in OfflineService.instance.pendientesDonde('reserva_id', reservaId)) {
+      if (op['type'] != 'registro_vehiculo') continue;
+      final rec = Map<String, dynamic>.from(op['record'] as Map);
+      final tipo = rec['tipo']?.toString().toLowerCase();
+      final yaSubido = regs.any((r) =>
+          r['tipo'].toString().toLowerCase() == tipo &&
+          r['estado']?.toString() != 'Rechazado');
+      if (yaSubido) continue;
+      regs.add({
+        ...rec,
+        'fecha_registro': op['createdAt'],
+        'estado': 'Pendiente',
+        '_pendiente': true,
+        '_intentos': op['attempts'],
+        '_error': op['lastError'],
+      });
+    }
+    return regs;
   }
 
   /// Cancela una reserva propia. Solo el solicitante y solo si:
@@ -1473,7 +1891,7 @@ class AppProvider extends ChangeNotifier {
           .eq('id', reservaId)
           .maybeSingle();
 
-      if (r == null) throw "Reserva no encontrada";
+      if (r == null) throw "La reserva ya no existe o fue modificada. Actualiza la pantalla.";
 
       final String estado = (r['estado'] ?? '').toString();
       final String estadoUpper = estado.toUpperCase();
@@ -1562,7 +1980,7 @@ class AppProvider extends ChangeNotifier {
           .select('id, estado, solicitud_correccion, empleado_id')
           .eq('id', recordId)
           .maybeSingle();
-      if (r == null) throw "Registro no encontrado";
+      if (r == null) throw "El registro ya no existe. Actualiza la pantalla.";
 
       final estadoActual = (r['estado'] ?? '').toString();
       if (estadoActual.toLowerCase().contains('correccion solicitada') ||
@@ -1614,11 +2032,11 @@ class AppProvider extends ChangeNotifier {
       final ctx = {'reserva_id': reservaId, 'tipo': tipo, 'fotos': localPhotos.length};
       log.i('registro', 'Guardar registro: inicio', data: ctx);
 
-      if (user == null) throw "No autenticado";
+      if (user == null) throw "Tu sesión no está activa. Vuelve a iniciar sesión.";
       if (currentEmployeeId == null) {
         await log.time('registro', 'empleado', _fetchCurrentEmployeeId, data: ctx);
       }
-      if (currentEmployeeId == null) throw "No se encontró el ID de empleado";
+      if (currentEmployeeId == null) throw "No se encontró tu ficha de empleado. Actualiza la pantalla o contacta al administrador.";
 
       // Idempotencia (igual que el path offline _subirRegistro): si YA existe un
       // registro para esta reserva+tipo (no rechazado), NO duplicar → devolver éxito.
@@ -1719,7 +2137,7 @@ class AppProvider extends ChangeNotifier {
     } catch (e, st) {
       log.e('registro', 'Guardar registro falló',
           data: {'reserva_id': reservaId, 'tipo': tipo}, error: e, stack: st);
-      errorMessage = "Error al guardar registro: $e";
+      errorMessage = mensajeError(e, accion: 'guardar el registro');
       return false;
     } finally {
       isLoading = false;
@@ -1741,9 +2159,9 @@ class AppProvider extends ChangeNotifier {
       isLoading = true;
       notifyListeners();
 
-      if (user == null) throw "No autenticado";
+      if (user == null) throw "Tu sesión no está activa. Vuelve a iniciar sesión.";
       if (currentEmployeeId == null) await _fetchCurrentEmployeeId();
-      if (currentEmployeeId == null) throw "No se encontró el ID de empleado";
+      if (currentEmployeeId == null) throw "No se encontró tu ficha de empleado. Actualiza la pantalla o contacta al administrador.";
 
       // Subir las fotos que se pueda (sin abortar si alguna falla)
       final Map<String, String> photoUrls = {};
@@ -1786,7 +2204,7 @@ class AppProvider extends ChangeNotifier {
     } catch (e, st) {
       log.e('registro', 'Registro MANUAL falló',
           data: {'reserva_id': reservaId, 'tipo': tipo}, error: e, stack: st);
-      errorMessage = "Error al enviar registro manual: $e";
+      errorMessage = mensajeError(e, accion: 'enviar el registro manual');
       return false;
     } finally {
       isLoading = false;
@@ -1817,7 +2235,7 @@ class AppProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint("Error uploading photo $name: $e");
       // Rethrow to let saveVehicleRegister catch it and abort insert if critical
-      throw "Error subiendo foto $name: $e";
+      throw "No se pudo subir la foto '$name'. ${mensajeError(e)}";
     }
   }
 
@@ -1996,7 +2414,7 @@ class AppProvider extends ChangeNotifier {
       debugPrint("🎉 Proceso completado exitosamente");
     } catch (e) {
       debugPrint("❌ Error updating profile photo: $e");
-      errorMessage = "Error al actualizar foto: $e";
+      errorMessage = mensajeError(e, accion: 'actualizar la foto');
       notifyListeners();
     } finally {
       isLoading = false;
@@ -2032,7 +2450,7 @@ class AppProvider extends ChangeNotifier {
       return true;
     } catch (e) {
       debugPrint("❌ Error updating profile: $e");
-      errorMessage = "Error al actualizar perfil: $e";
+      errorMessage = mensajeError(e, accion: 'actualizar el perfil');
       return false;
     } finally {
       isLoading = false;

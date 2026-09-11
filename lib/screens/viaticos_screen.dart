@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import '../utils/mensajes_error.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../models/liquidacion.dart';
 import '../services/liquidaciones_service.dart';
+import '../services/liquidaciones_local.dart';
+import '../services/offline_service.dart';
 import 'liquidacion_detail_screen.dart';
 import 'liquidacion_form_screen.dart';
 
@@ -15,6 +18,8 @@ class ViaticosScreen extends StatefulWidget {
 
 class _ViaticosScreenState extends State<ViaticosScreen> {
   List<Liquidacion> liquidaciones = [];
+  // true cuando la lista viene de SQLite porque no hubo red.
+  bool desdeLocal = false;
   bool isLoading = false;
   String? error;
   String selectedFilter = 'todos';
@@ -78,25 +83,54 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
           ? null
           : selectedFilter;
 
-      final result = await LiquidacionesService.getLiquidaciones(
-        empleadoId: empleadoId,
-        estado: estadoFilter,
-        page: currentPage,
-        limit: 20,
-      );
+      // Creadas sin conexión (todavía en la cola): siempre arriba, página 1.
+      final pendientesLocales = (currentPage == 1 &&
+              (estadoFilter == null || estadoFilter == 'pendiente'))
+          ? await LiquidacionesLocal.instance
+              .listar(empleadoId, soloLocales: true)
+          : <Liquidacion>[];
 
-      setState(() {
-        if (refresh) {
-          liquidaciones = result['liquidaciones'];
-        } else {
-          liquidaciones.addAll(result['liquidaciones']);
+      List<Liquidacion> remotas;
+      bool masPaginas;
+      bool local = false;
+      try {
+        if (!await OfflineService.instance.hayConexion()) {
+          throw Exception('sin conexión');
         }
-        hasMore = result['liquidaciones'].length >= 20;
+        final result = await LiquidacionesService.getLiquidaciones(
+          empleadoId: empleadoId,
+          estado: estadoFilter,
+          page: currentPage,
+          limit: 20,
+        );
+        remotas = List<Liquidacion>.from(result['liquidaciones']);
+        masPaginas = remotas.length >= 20;
+      } catch (e) {
+        // Sin red o servidor caído: mostrar lo guardado en SQLite (último mes).
+        if (currentPage != 1) rethrow;
+        remotas = (await LiquidacionesLocal.instance
+                .listar(empleadoId, estado: estadoFilter))
+            .where((l) => !l.esLocal)
+            .toList();
+        masPaginas = false;
+        local = true;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        desdeLocal = local;
+        if (refresh || currentPage == 1) {
+          liquidaciones = [...pendientesLocales, ...remotas];
+        } else {
+          liquidaciones.addAll(remotas);
+        }
+        hasMore = masPaginas;
       });
     } catch (e) {
       print('UI ERROR: $e');
+      if (!mounted) return;
       setState(() {
-        error = e.toString();
+        error = mensajeError(e, accion: 'cargar las liquidaciones');
       });
     } finally {
       if (mounted) {
@@ -129,7 +163,71 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
     }
   }
 
+  /// Liquidación creada sin conexión: aún no tiene id en el servidor, así que
+  /// no se puede abrir el detalle remoto. Se muestra un resumen local.
+  void _mostrarPendienteLocal(Liquidacion l) {
+    final facturas = l.facturas ?? [];
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.cloud_upload_outlined, color: Colors.orange.shade800),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Pendiente de subir',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Esta liquidación se guardó sin conexión. Se subirá automáticamente cuando haya internet.',
+              style: TextStyle(color: Colors.black54, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            Text('Fecha: ${l.fecha.toIso8601String().split('T').first}'),
+            Text('Tipo: ${l.tipo}'),
+            if (l.descripcion != null && l.descripcion!.isNotEmpty)
+              Text('Descripción: ${l.descripcion}'),
+            const SizedBox(height: 12),
+            Text('Facturas (${facturas.length})',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+            ...facturas.map((f) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.receipt),
+                  title: Text('${f.proveedor} · ${f.tipoLabel}'),
+                  subtitle: Text('#${f.numeroFactura}'),
+                  trailing: Text('₡${f.monto.toStringAsFixed(0)}'),
+                )),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text('Total: ₡${l.totalGeneral.toStringAsFixed(0)}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _navigateToDetail(Liquidacion liquidacion) async {
+    if (liquidacion.esLocal) {
+      _mostrarPendienteLocal(liquidacion);
+      return;
+    }
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -316,9 +414,33 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
                             : ListView.separated(
                                 physics: const AlwaysScrollableScrollPhysics(),
                                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                                itemCount: liquidaciones.length + (hasMore ? 1 : 0),
+                                itemCount: liquidaciones.length + (hasMore ? 1 : 0) + (desdeLocal ? 1 : 0),
                                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                                 itemBuilder: (context, index) {
+                                  if (desdeLocal) {
+                                    if (index == 0) {
+                                      return Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blueGrey.shade50,
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.wifi_off, size: 18, color: Colors.blueGrey.shade700),
+                                            const SizedBox(width: 8),
+                                            const Expanded(
+                                              child: Text(
+                                                'Sin conexión: mostrando liquidaciones guardadas (último mes).',
+                                                style: TextStyle(fontSize: 12),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }
+                                    index -= 1;
+                                  }
                                   if (index == liquidaciones.length) {
                                     return const Center(
                                       child: Padding(
@@ -448,12 +570,18 @@ class _LiquidacionCard extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE7F1FF),
+                    color: liquidacion.esLocal
+                        ? Colors.orange.shade50
+                        : const Color(0xFFE7F1FF),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
-                    Icons.receipt_long,
-                    color: Theme.of(context).primaryColor,
+                    liquidacion.esLocal
+                        ? Icons.cloud_upload_outlined
+                        : Icons.receipt_long,
+                    color: liquidacion.esLocal
+                        ? Colors.orange.shade800
+                        : Theme.of(context).primaryColor,
                   ),
                 ),
                 const SizedBox(width: 16),

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../utils/mensajes_error.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
@@ -89,7 +90,7 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
       debugPrint("Location error: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("No se pudo obtener la ubicación: $e")),
+          SnackBar(content: Text("No se pudo obtener tu ubicación. Activa el GPS e intenta de nuevo.")),
         );
       }
     } finally {

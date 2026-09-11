@@ -20,6 +20,9 @@ class Liquidacion {
   final DateTime? fechaCorreccion;
   final String? respuestaAdmin;
   final String? descripcion;
+  // Transitorio: true si fue creada sin conexión y sigue en la cola offline
+  // (id `local-…`). No se serializa.
+  bool esLocal = false;
 
   Liquidacion({
     required this.id,

@@ -10,7 +10,7 @@ Hallazgos encontrados al leer el código para escribir esta documentación. No s
 | S2 | `create_liquidacion.php` y `finish_visita.php` no autentican. Confían en `empleado_id` e `id` del cliente | `MecsaOPS/api/` | Alto |
 | S3 | API key de Google Maps y anon key de Supabase hardcodeadas en el código Dart. La anon key es esperada, pero la key de Google debería restringirse por paquete/SHA | `trip_nav_screen.dart:16`, `map_picker_screen.dart:10`, `main.dart` | Medio |
 | S4 | `config/supabase.php` del servidor tiene fallback con service_role real comiteado | `MecsaOPS/config/supabase.php` | Alto (repo servidor) |
-| S5 | Al arrancar con sesión persistida no se re-evalúa MFA. Un dispositivo con sesión AAL1 antigua entra directo a Home | `main.dart:68-76` | Medio |
+| S5 | Al arrancar con sesión persistida no se re-evalúa MFA. Un dispositivo con sesión AAL1 antigua entra directo a Home. (La **validez** del token sí se verifica ahora: ver §8.0 del doc de offline y `renovarSesion()` / modal de sesión expirada en `HomeScreen`) | `main.dart`, `app_provider.dart` (`_verificarSesionAlArrancar`) | Medio |
 | S6 | El endpoint `mfa/backup_codes_generate.php` documenta que exige AAL2 pero solo verifica que el JWT sea válido | `MecsaOPS/api/mfa/backup_codes_generate.php` | Bajo |
 
 ## 10.2 Consistencia de datos

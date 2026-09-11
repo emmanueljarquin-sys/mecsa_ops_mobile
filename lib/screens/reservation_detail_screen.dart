@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import '../utils/mensajes_error.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:printing/printing.dart';
 import 'package:gal/gal.dart';
 import '../providers/app_provider.dart';
+import '../services/offline_service.dart';
 import '../services/ruta_pdf_service.dart';
 import '../widgets/correccion_widgets.dart';
 import 'vehicle_register_screen.dart';
@@ -513,7 +515,7 @@ class ReservationDetailScreen extends StatelessWidget {
         Navigator.of(context, rootNavigator: true).pop();
       }
       messenger.showSnackBar(
-        SnackBar(content: Text("No se pudo generar el PDF: $e")),
+        SnackBar(content: Text(mensajeError(e, accion: 'generar el PDF'))),
       );
     }
   }
@@ -598,16 +600,41 @@ class ReservationDetailScreen extends StatelessWidget {
   String _hora(DateTime d) =>
       "${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}";
 
+  /// Aviso amarillo: el registro se hizo sin conexión y está en la cola.
+  Widget _avisoPendiente(String texto) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.orange.shade300),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_upload_outlined, color: Colors.orange.shade800),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              texto,
+              style: TextStyle(
+                  color: Colors.orange.shade900,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRegistrationButtons(BuildContext context) {
-    final supabase = Supabase.instance.client;
     final reservaId = reservation['id'].toString();
+    // Escuchar la cola: cuando una operación sube, se reconstruye.
+    context.watch<OfflineService>();
 
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: supabase
-          .schema('flotilla')
-          .from('registros_vehiculos')
-          .select()
-          .eq('reserva_id', reservaId),
+      future: context.read<AppProvider>().getRegistrosReserva(reservaId),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Container(
@@ -617,8 +644,8 @@ class ReservationDetailScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              "Error: ${snapshot.error}",
-              style: const TextStyle(color: Colors.red, fontSize: 11),
+              mensajeError(snapshot.error, accion: 'cargar los registros de uso'),
+              style: const TextStyle(color: Colors.red, fontSize: 12),
             ),
           );
         }
@@ -639,6 +666,8 @@ class ReservationDetailScreen extends StatelessWidget {
 
         final hasSalida = regSalida.isNotEmpty;
         final hasEntrada = regEntrada.isNotEmpty;
+        final salidaPendiente = regSalida['_pendiente'] == true;
+        final entradaPendiente = regEntrada['_pendiente'] == true;
 
         if (!hasSalida) {
           return _buildActionButton(
@@ -662,6 +691,9 @@ class ReservationDetailScreen extends StatelessWidget {
         } else if (!hasEntrada) {
           return Column(
             children: [
+              if (salidaPendiente)
+                _avisoPendiente(
+                    'Salida registrada sin conexión. Se subirá automáticamente cuando haya internet.'),
               _buildActionButton(
                 context,
                 "INICIAR VIAJE (DENTRO DE APP)",
@@ -713,16 +745,25 @@ class ReservationDetailScreen extends StatelessWidget {
               .toDouble();
           final double kmTotales = kmEntrada - kmSalida;
 
-          final DateTime tSalida = DateTime.parse(regSalida['fecha_registro']);
-          final DateTime tEntrada = DateTime.parse(
-            regEntrada['fecha_registro'],
-          );
+          final DateTime tSalida =
+              DateTime.tryParse(regSalida['fecha_registro']?.toString() ?? '') ??
+                  DateTime.now();
+          final DateTime tEntrada =
+              DateTime.tryParse(regEntrada['fecha_registro']?.toString() ?? '') ??
+                  DateTime.now();
           final Duration duracion = tEntrada.difference(tSalida);
 
           final String duracionStr =
               "${duracion.inHours}h ${duracion.inMinutes.remainder(60)}m";
 
-          return Container(
+          return Column(children: [
+            if (salidaPendiente || entradaPendiente)
+              _avisoPendiente(salidaPendiente && entradaPendiente
+                  ? 'Salida y entrada registradas sin conexión. Se subirán automáticamente cuando haya internet.'
+                  : salidaPendiente
+                      ? 'Salida registrada sin conexión. Se subirá automáticamente cuando haya internet.'
+                      : 'Entrada registrada sin conexión. Se subirá automáticamente cuando haya internet.'),
+            Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: const Color(0xFFE3F2FD),
@@ -895,7 +936,8 @@ class ReservationDetailScreen extends StatelessWidget {
                 ),
               ],
             ),
-          );
+          ),
+          ]);
         }
       },
     );

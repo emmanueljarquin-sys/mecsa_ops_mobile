@@ -366,6 +366,41 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
 
+                  // Aviso de sesión expirada (cierre forzado por el servidor)
+                  if (provider.loginNotice != null) ...[
+                    const SizedBox(height: 24),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.orange[200]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.lock_clock_outlined,
+                            color: Colors.orange[800],
+                            size: 20,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              provider.loginNotice!,
+                              style: TextStyle(
+                                color: Colors.orange[900],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
                   // Error Message
                   if (provider.errorMessage != null) ...[
                     const SizedBox(height: 24),

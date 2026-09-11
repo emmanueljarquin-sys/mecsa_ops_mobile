@@ -13,6 +13,8 @@ import 'providers/app_provider.dart';
 import 'services/app_logger.dart';
 import 'services/connectivity_service.dart';
 import 'services/offline_service.dart';
+import 'services/sync_service.dart';
+import 'package:workmanager/workmanager.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 
@@ -24,6 +26,31 @@ const String kSupabaseAnonKey =
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   print("Handling a background message: ${message.messageId}");
+}
+
+/// Punto de entrada de WorkManager: corre en un isolate de fondo (la app
+/// puede estar cerrada) todos los días a la hora configurada en
+/// Perfil → Copias de seguridad. Inicializa lo mínimo y delega en SyncService.
+@pragma('vm:entry-point')
+void syncCallbackDispatcher() {
+  Workmanager().executeTask((taskName, inputData) async {
+    try {
+      WidgetsFlutterBinding.ensureInitialized();
+      try {
+        await AppLogger.instance.init(appVersion: 'bg');
+      } catch (_) {}
+      log.i('sync', 'Tarea de fondo iniciada', data: {'task': taskName});
+      await Supabase.initialize(url: kSupabaseUrl, anonKey: kSupabaseAnonKey);
+      await ConnectivityService.instance.init(
+          probeUrl: '$kSupabaseUrl/rest/v1/', headers: {'apikey': kSupabaseAnonKey});
+      await OfflineService.instance.init();
+      final r = await SyncService.instance.sincronizar();
+      return r.ok || r.pendientes == 0;
+    } catch (e, st) {
+      log.e('sync', 'Tarea de fondo falló', error: e, stack: st);
+      return false;
+    }
+  });
 }
 
 void main() async {
@@ -83,6 +110,15 @@ void main() async {
     log.e('offline', 'OfflineService no pudo iniciar', error: e, stack: st);
   }
 
+  // Copia de seguridad diaria (WorkManager). No bloquear el arranque.
+  try {
+    await Workmanager().initialize(syncCallbackDispatcher);
+    SyncService.instance.programar();
+  } catch (e, st) {
+    log.w('sync', 'WorkManager no pudo iniciar', error: e);
+    print('$st');
+  }
+
   runApp(MecsaOpsApp(firebaseAvailable: firebaseAvailable));
 }
 
@@ -102,6 +138,9 @@ class MecsaOpsApp extends StatelessWidget {
         ),
         ChangeNotifierProvider<ConnectivityService>.value(
           value: ConnectivityService.instance,
+        ),
+        ChangeNotifierProvider<SyncService>.value(
+          value: SyncService.instance,
         ),
       ],
       child: MaterialApp(

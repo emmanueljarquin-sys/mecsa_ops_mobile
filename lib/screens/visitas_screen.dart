@@ -292,6 +292,15 @@ class _VisitaCard extends StatelessWidget {
                     ),
                   ),
                   _buildStatusBadge(estado),
+                  if (visita['_pendiente'] == true)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Tooltip(
+                        message: 'Pendiente de subir (sin conexión)',
+                        child: Icon(Icons.cloud_upload_outlined,
+                            size: 18, color: Colors.orange.shade800),
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 12),

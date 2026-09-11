@@ -26,6 +26,93 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _didShowOptionalUpdate = false;
+  bool _sessionDialogShowing = false;
+
+  /// Modal de sesión expirada: "Renovar sesión" (usa el refresh token) o
+  /// "Cerrar sesión". Se muestra cuando provider.sessionExpired pasa a true y
+  /// se cierra solo cuando vuelve a false (renovación OK o cierre forzado).
+  void _syncSessionDialog(AppProvider provider) {
+    if (provider.sessionExpired && !_sessionDialogShowing) {
+      _sessionDialogShowing = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => PopScope(
+            canPop: false,
+            child: Consumer<AppProvider>(
+              builder: (ctx, p, _) => AlertDialog(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+                icon: const Icon(Icons.lock_clock_outlined,
+                    size: 40, color: Colors.orange),
+                title: const Text('Tu sesión expiró'),
+                content: const Text(
+                  'El servidor ya no acepta la sesión guardada en este teléfono. '
+                  'Podés intentar renovarla sin volver a escribir la contraseña. '
+                  'Si no se puede, tendrás que iniciar sesión de nuevo.',
+                ),
+                actionsAlignment: MainAxisAlignment.spaceBetween,
+                actions: [
+                  TextButton(
+                    onPressed: p.renovandoSesion
+                        ? null
+                        : () async {
+                            await p.signOut();
+                          },
+                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    child: const Text('CERRAR SESIÓN'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: p.renovandoSesion
+                        ? null
+                        : () async {
+                            final ok = await p.renovarSesion();
+                            if (!mounted) return;
+                            final messenger = ScaffoldMessenger.of(context);
+                            if (ok) {
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                    content: Text('Sesión renovada'),
+                                    backgroundColor: Colors.green),
+                              );
+                            } else if (p.user != null) {
+                              // Falló por red: seguimos en el modal.
+                              messenger.showSnackBar(
+                                SnackBar(
+                                    content: Text(p.errorMessage ??
+                                        'No se pudo renovar la sesión'),
+                                    backgroundColor: Colors.orange),
+                              );
+                            }
+                          },
+                    icon: p.renovandoSesion
+                        ? const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.refresh),
+                    label: const Text('RENOVAR SESIÓN'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        _sessionDialogShowing = false;
+      });
+    } else if (!provider.sessionExpired && _sessionDialogShowing) {
+      // Renovación OK o sesión cerrada: quitar el modal.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _sessionDialogShowing) {
+          Navigator.of(context, rootNavigator: true)
+              .popUntil((r) => r.isFirst || !_sessionDialogShowing);
+          _sessionDialogShowing = false;
+        }
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -235,6 +322,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
     }
+
+    // Modal de sesión expirada (renovar / cerrar sesión)
+    _syncSessionDialog(provider);
 
     // Modal opcional si hay una update pero no es forzosa
     if (provider.updateUrl != null && !provider.forceUpdate && !_didShowOptionalUpdate) {
@@ -458,7 +548,11 @@ class DashboardTab extends StatelessWidget {
                             if (raw is Map) return (raw['url'] ?? raw['path'] ?? '').toString();
                             return '';
                           }())
-                        : const NetworkImage('https://i.pravatar.cc/150?img=11'),
+                        : null,
+                    onBackgroundImageError: emp?['photo'] != null ? (_, __) {} : null,
+                    child: emp?['photo'] == null
+                        ? const Icon(Icons.person, color: Colors.grey)
+                        : null,
                   ),
                 ),
               ],
@@ -778,7 +872,11 @@ class DashboardTab extends StatelessWidget {
                             if (raw is Map) return (raw['url'] ?? raw['path'] ?? '').toString();
                             return '';
                           }())
-                        : const NetworkImage('https://i.pravatar.cc/150?img=11'),
+                        : null,
+                    onBackgroundImageError: emp?['photo'] != null ? (_, __) {} : null,
+                    child: emp?['photo'] == null
+                        ? const Icon(Icons.person, color: Colors.grey)
+                        : null,
                   ),
                   const SizedBox(width: 16),
                   Expanded(

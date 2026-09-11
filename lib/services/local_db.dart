@@ -19,7 +19,7 @@ class LocalDb {
   static final LocalDb instance = LocalDb._();
 
   static const String dbName = 'mecsa_ops_local.db';
-  static const int dbVersion = 2;
+  static const int dbVersion = 3;
 
   Database? _db;
   Future<Database>? _opening;
@@ -49,12 +49,86 @@ class LocalDb {
   Future<void> _onCreate(Database db, int version) async {
     await _createLogTable(db);
     await _createCacheTable(db);
+    await _createOfflineTables(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     // Migraciones incrementales: solo agregar, nunca borrar.
     if (oldVersion < 1) await _createLogTable(db);
     if (oldVersion < 2) await _createCacheTable(db);
+    if (oldVersion < 3) await _createOfflineTables(db);
+  }
+
+  /// Tablas de trabajo offline (v3):
+  ///
+  /// - `offline_queue`: cola de operaciones pendientes de subir (antes vivía
+  ///   en SharedPreferences). `payload` es el JSON completo de la operación
+  ///   (record, fotos, hijos). Se procesa en orden de `created_ms`.
+  /// - `liquidaciones`: liquidaciones del usuario (último mes, traídas al
+  ///   iniciar sesión) más las creadas sin conexión (`local = 1`). `json`
+  ///   guarda la fila completa incluidas sus facturas.
+  /// - `reservas`: copia de las reservas del usuario tal como las devuelve el
+  ///   API. Se sobreescriben completas en cada sincronización (el servidor
+  ///   manda). Sirven para ver reservas y registrar salida/entrada sin red.
+  /// - `id_map`: traduce ids locales (`local-…`) a ids del servidor una vez
+  ///   sincronizados, para que operaciones encadenadas (iniciar visita →
+  ///   waypoints → finalizar) se resuelvan aunque se hayan creado offline.
+  Future<void> _createOfflineTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS offline_queue (
+        id          TEXT PRIMARY KEY,
+        type        TEXT    NOT NULL,
+        payload     TEXT    NOT NULL,
+        created_ms  INTEGER NOT NULL,
+        attempts    INTEGER NOT NULL DEFAULT 0,
+        last_error  TEXT,
+        usuario     TEXT,
+        estado      TEXT    NOT NULL DEFAULT 'pendiente',
+        synced_ms   INTEGER,
+        remote_id   TEXT
+      )
+    ''');
+    // estado: 'pendiente' (falta subir) | 'subido' (confirmado por el servidor).
+    // Las subidas se conservan un tiempo como historial y luego se purgan.
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_offline_queue_created ON offline_queue(created_ms)');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_offline_queue_estado ON offline_queue(estado)');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS reservas (
+        id            TEXT PRIMARY KEY,
+        empleado_id   TEXT NOT NULL,
+        estado        TEXT,
+        fecha_salida  TEXT,
+        fecha_regreso TEXT,
+        json          TEXT NOT NULL,
+        updated_ms    INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_reservas_empleado ON reservas(empleado_id, fecha_salida DESC)');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS liquidaciones (
+        id          TEXT PRIMARY KEY,
+        empleado_id TEXT    NOT NULL,
+        fecha       TEXT,
+        estado      TEXT,
+        total       REAL,
+        created_ms  INTEGER NOT NULL,
+        local       INTEGER NOT NULL DEFAULT 0,
+        json        TEXT    NOT NULL,
+        updated_ms  INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_liq_empleado ON liquidaciones(empleado_id, created_ms DESC)');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS id_map (
+        local_id    TEXT PRIMARY KEY,
+        remote_id   TEXT NOT NULL,
+        created_ms  INTEGER NOT NULL
+      )
+    ''');
   }
 
   /// Caché de lectura: última respuesta conocida de cada consulta remota,

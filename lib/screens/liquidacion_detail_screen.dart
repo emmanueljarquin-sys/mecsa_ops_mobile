@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../utils/mensajes_error.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -97,7 +98,7 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo enviar: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(mensajeError(e, accion: 'enviar el comentario')), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -140,7 +141,7 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
         if (mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text('Error: $e')));
+          ).showSnackBar(SnackBar(content: Text(mensajeError(e)), backgroundColor: Colors.red));
         }
       }
     }
@@ -189,7 +190,7 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${_msg(e)}'), backgroundColor: Colors.red),
+          SnackBar(content: Text(mensajeError(e, accion: 'guardar la factura')), backgroundColor: Colors.red),
         );
       }
     }
@@ -245,7 +246,7 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
                 children: [
                   const Icon(Icons.error_outline, size: 64, color: Colors.red),
                   const SizedBox(height: 16),
-                  Text('Error: $error'),
+                  Text(mensajeError(error, accion: 'cargar la liquidación')),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: _loadDetail,

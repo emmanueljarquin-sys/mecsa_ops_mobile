@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import '../utils/mensajes_error.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../models/liquidacion.dart';
 import '../services/liquidaciones_service.dart';
 import '../services/offline_service.dart';
+import '../services/liquidaciones_local.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../utils/num_parse.dart';
@@ -546,7 +548,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
       setState(() => _isLoadingData = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error al cargar datos: $e')));
+      ).showSnackBar(SnackBar(content: Text(mensajeError(e, accion: 'cargar los datos del formulario'))));
     }
   }
 
@@ -633,8 +635,16 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
 
       // ── SIN CONEXIÓN (liquidación nueva): encolar liquidación + facturas ──
       if (widget.liquidacion == null && !await OfflineService.instance.hayConexion()) {
+        final localId = OfflineService.instance.nuevoIdLocal();
+        // Copia local visible en la lista (se borra cuando la cola confirma).
+        await LiquidacionesLocal.instance.guardarPendiente(
+          localId: localId,
+          liquidacion: liquidacion,
+          facturas: _facturas,
+        );
         await OfflineService.instance.enqueue(
           type: 'liquidacion',
+          localId: localId,
           record: liquidacion.toJson(),
           children: _facturas.map((f) => {
             'record': {
@@ -702,7 +712,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ).showSnackBar(SnackBar(content: Text(mensajeError(e, accion: 'guardar la liquidación')), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) {
@@ -1407,7 +1417,7 @@ class _FacturaDialogState extends State<_FacturaDialog> {
         if (!mounted) return;
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error al subir imagen: $e')));
+        ).showSnackBar(SnackBar(content: Text(mensajeError(e, accion: 'subir el comprobante')), backgroundColor: Colors.red));
       } finally {
         if (mounted) setState(() => _isUploading = false);
       }

@@ -59,6 +59,7 @@ dependencies:
   sqflite: ^2.3.3          # base de datos local (log de actividad, futura caché/cola offline)
   path: ^1.9.0             # rutas de archivo (usado por local_db)
   share_plus: ^11.0.0      # compartir archivos (exportar log en CSV/JSON)
+  workmanager: ^0.10.10
 
 dev_dependencies:
   flutter_test:

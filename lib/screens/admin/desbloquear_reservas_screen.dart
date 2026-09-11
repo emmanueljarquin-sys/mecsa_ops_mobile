@@ -3,6 +3,7 @@
 // Pantalla admin: empleados bloqueados para reservas → desbloquear.
 // =============================================================================
 import 'package:flutter/material.dart';
+import '../../utils/mensajes_error.dart';
 import '../../services/admin_service.dart';
 
 class DesbloquearReservasScreen extends StatefulWidget {
@@ -86,7 +87,7 @@ class _DesbloquearReservasScreenState extends State<DesbloquearReservasScreen> {
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+        SnackBar(content: Text(mensajeError(e)), backgroundColor: Colors.red),
       );
     }
   }
@@ -111,7 +112,7 @@ class _DesbloquearReservasScreenState extends State<DesbloquearReservasScreen> {
         const SizedBox(height: 120),
         const Icon(Icons.error_outline, size: 56, color: Colors.red),
         const SizedBox(height: 12),
-        Center(child: Text('Error: $_error', textAlign: TextAlign.center)),
+        Center(child: Text(mensajeError(_error, accion: 'cargar la lista'), textAlign: TextAlign.center)),
         const SizedBox(height: 12),
         Center(child: ElevatedButton(onPressed: _load, child: const Text('Reintentar'))),
       ]);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/mensajes_error.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_provider.dart';
@@ -179,7 +180,7 @@ class _AuditoriasListScreenState extends State<AuditoriasListScreen> {
           const SizedBox(height: 120),
           Icon(Icons.error_outline, size: 56, color: Colors.red.shade300),
           const SizedBox(height: 12),
-          Center(child: Text('Error: $_error', textAlign: TextAlign.center)),
+          Center(child: Text(mensajeError(_error, accion: 'cargar las auditorías'), textAlign: TextAlign.center)),
         ],
       );
 }
