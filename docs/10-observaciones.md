@@ -1,0 +1,66 @@
+# 10. Observaciones y deuda técnica
+
+Hallazgos encontrados al leer el código para escribir esta documentación. No son cambios aplicados, son puntos a evaluar. Se agrupan por impacto.
+
+## 10.1 Seguridad
+
+| # | Hallazgo | Dónde | Riesgo |
+|---|----------|-------|--------|
+| S1 | `approve_liquidacion.php` acepta `actor_id` sin validar el JWT. Quien conozca el UUID de un admin puede aprobar liquidaciones | `MecsaOPS/api/approve_liquidacion.php`, `includes/resolve_current_employee.php` | Alto |
+| S2 | `create_liquidacion.php` y `finish_visita.php` no autentican. Confían en `empleado_id` e `id` del cliente | `MecsaOPS/api/` | Alto |
+| S3 | API key de Google Maps y anon key de Supabase hardcodeadas en el código Dart. La anon key es esperada, pero la key de Google debería restringirse por paquete/SHA | `trip_nav_screen.dart:16`, `map_picker_screen.dart:10`, `main.dart` | Medio |
+| S4 | `config/supabase.php` del servidor tiene fallback con service_role real comiteado | `MecsaOPS/config/supabase.php` | Alto (repo servidor) |
+| S5 | Al arrancar con sesión persistida no se re-evalúa MFA. Un dispositivo con sesión AAL1 antigua entra directo a Home | `main.dart:68-76` | Medio |
+| S6 | El endpoint `mfa/backup_codes_generate.php` documenta que exige AAL2 pero solo verifica que el JWT sea válido | `MecsaOPS/api/mfa/backup_codes_generate.php` | Bajo |
+
+## 10.2 Consistencia de datos
+
+| # | Hallazgo | Dónde | Efecto |
+|---|----------|-------|--------|
+| D1 | Las facturas se insertan una por una después de crear la liquidación, sin transacción. Si falla una, la liquidación queda sin esa factura | `liquidacion_form_screen.dart:674-687` | Datos parciales |
+| D2 | La cola offline no tiene idempotencia para `liquidacion` ni `factura`. Un timeout tras el insert genera duplicados en el reintento | `offline_service.dart:251-288` | Duplicados |
+| D3 | Fotos huérfanas en Storage si la subida funciona pero el insert falla y se reintenta | `offline_service.dart`, `app_provider.dart:1394-1448` | Basura en Storage |
+| D4 | `liquidacionesPendientes` compara `estado != 'Aprobado'` pero los valores reales son `aprobada`/`rechazada` en minúsculas. Cuenta todas las liquidaciones | `app_provider.dart:692-694` | Contador incorrecto en Dashboard |
+| D5 | `_saveFcmToken` corre en `_init()` antes de que exista `currentEmployeeId`, así que en el primer arranque no guarda el token. Se guarda en arranques posteriores si Firebase inicializa antes que `fetchData` termine, lo cual no está garantizado | `app_provider.dart:216, 320-338` | Push puede no llegar |
+| D6 | `aprobado_por` queda como `'Sistema'` cuando se aprueba desde la app | `MecsaOPS/api/approve_liquidacion.php` | Trazabilidad |
+| D7 | `finish_visita.php` deja `km_recorridos` en null si `odometro_inicial` es 0 | `MecsaOPS/api/finish_visita.php:78-80` | Sin pago |
+| D8 | `update_liquidacion.php` no aplica la regla de descripción mínima; solo `create_liquidacion.php` | `MecsaOPS/api/update_liquidacion.php` | Regla evadible al editar |
+
+## 10.3 Funcionalidad rota o incompleta
+
+| # | Hallazgo | Dónde |
+|---|----------|-------|
+| F1 | El servicio de PDF hace `http.get` sobre el valor de `foto_*`, pero esas columnas guardan solo el nombre de archivo, no la URL. Falta un `getPublicUrl` | `ruta_pdf_service.dart:48-57`, `app_provider.dart:1545` |
+| F2 | La paginación de viáticos nunca avanza: `currentPage` no se incrementa y no hay scroll listener. Queda un spinner permanente al final | `viaticos_screen.dart:94, 322-329` |
+| F3 | `VisitaFormScreen` (alta manual de visita) y `LiveMapScreen` no tienen navegación desde ninguna pantalla | `visita_form_screen.dart`, `live_map_screen.dart` |
+| F4 | `_showCompleteDialog` en el detalle de visita está definido pero ningún botón lo llama | `visita_detail_screen.dart` |
+| F5 | El botón "Finalizar viaje" de `TripNavScreen` solo hace `pop`; el `TrackingService` sigue insertando en `ops_tracking` hasta que se registre la entrada | `trip_nav_screen.dart:808-817` |
+| F6 | `AuditoriaDetailScreen` depende de un cache estático que solo se llena en la lista. Si se llega por otro camino muestra "Vehículo" | `auditoria_service.dart:107-116` |
+| F7 | La versión mostrada en Perfil (`1.0.0 (Beta)`) y en el diálogo del Dashboard (`1.1.2`) son literales; la real es 1.5.8+36 | `profile_screen.dart:186-208`, `home_screen.dart:748` |
+| F8 | El modelo `Reservation` no se usa; las pantallas trabajan con mapas crudos | `models/reservation.dart` |
+
+## 10.4 Conectividad y resiliencia
+
+| # | Hallazgo | Dónde |
+|---|----------|-------|
+| C1 | No hay verificación de conectividad al arrancar. `check_version.php` y `fetchData` no tienen timeout; en Wi-Fi cautivo pueden colgarse | `app_provider.dart:224-251, 519-558` |
+| C2 | `hayConexion()` devuelve `true` ante error. Es optimista por diseño, pero significa que "sin conexión" solo se detecta cuando el upload real falla | `offline_service.dart:60-66` |
+| C3 | La cola offline no tiene backoff ni límite de reintentos. Una operación que siempre falla se reintenta en cada flush indefinidamente | `offline_service.dart:144-168` |
+| C4 | `fcm_v1_helper.php` pide un token OAuth nuevo por cada push y nadie verifica la respuesta de FCM | `MecsaOPS/api/fcm_v1_helper.php` |
+
+## 10.5 Duplicación
+
+| # | Hallazgo |
+|---|----------|
+| U1 | Dos streams de GPS simultáneos en viajes y visitas (pantalla + `TrackingService`) con el mismo `distanceFilter`. Podría unificarse en uno que alimente ambos destinos |
+| U2 | El empleado recibe dos avisos por la misma aprobación: notificación local por Realtime y push FCM |
+| U3 | `LiquidacionesService.approveLiquidacion` existe pero no se usa; la pantalla admin usa `AdminService.aprobarLiquidacion`. Conviene eliminar la primera |
+| U4 | Chequeo de `activo == false` duplicado en `signIn` y en `_fetchCurrentEmployeeId` con mensajes distintos, y ambos pueden ejecutarse en paralelo tras el login |
+
+## 10.6 Sugerencias de próximos pasos
+
+1. Validar el JWT de Supabase en los endpoints PHP que hoy confían en `actor_id` o `empleado_id` (S1, S2). El helper `mfa/_bearer.php` ya hace exactamente eso y puede reutilizarse.
+2. Añadir `getPublicUrl` en el servicio de PDF (F1) y corregir la comparación de `liquidacionesPendientes` (D4). Son cambios de una línea con impacto visible.
+3. Mover `_saveFcmToken` al final de `_fetchCurrentEmployeeId` (D5).
+4. Dar idempotencia a la cola offline para liquidaciones, por ejemplo enviando un `client_id` UUID que el servidor use como clave única (D2).
+5. Un ping ligero con timeout corto al arrancar, reutilizando `check_version.php`, para mostrar un banner de "sin conexión" en lugar del error genérico (C1).
