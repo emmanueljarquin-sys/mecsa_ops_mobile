@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/cached_image.dart';
 import '../utils/mensajes_error.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:provider/provider.dart';
@@ -76,14 +77,11 @@ class ReservationDetailScreen extends StatelessWidget {
                   width: double.infinity,
                   decoration: BoxDecoration(color: Colors.grey[200]),
                   child: imageUrl != null
-                      ? Image.network(
+                      ? CachedImage(
                           imageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (c, e, s) => const Icon(
-                            Icons.directions_car,
-                            size: 80,
-                            color: Colors.grey,
-                          ),
+                          fallbackIcon: Icons.directions_car,
+                          fallbackSize: 80,
                         )
                       : const Icon(
                           Icons.directions_car,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/cached_image.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_provider.dart';
@@ -189,17 +190,12 @@ class FlotillaScreen extends StatelessWidget {
                                 topLeft: Radius.circular(20),
                                 bottomLeft: Radius.circular(20),
                               ),
-                              child: Image.network(
-                                imageUrl ?? 'https://via.placeholder.com/120',
+                              child: CachedImage(
+                                imageUrl,
                                 width: 120,
                                 height: 120,
                                 fit: BoxFit.cover,
-                                errorBuilder: (c, e, s) => Container(
-                                  width: 120,
-                                  height: 120,
-                                  color: Colors.grey[300],
-                                  child: const Icon(Icons.directions_car),
-                                ),
+                                fallbackIcon: Icons.directions_car,
                               ),
                             ),
                             // Info Section
@@ -404,16 +400,13 @@ class _VehicleListCard extends StatelessWidget {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    data['image'],
+                  child: CachedImage(
+                    data['image']?.toString(),
                     width: 70,
                     height: 50,
                     fit: BoxFit.cover,
-                    errorBuilder: (c, e, s) => Container(
-                      width: 70,
-                      height: 50,
-                      color: Colors.grey[200],
-                    ),
+                    fallbackIcon: Icons.directions_car,
+                    fallbackSize: 22,
                   ),
                 ),
                 const SizedBox(width: 16),

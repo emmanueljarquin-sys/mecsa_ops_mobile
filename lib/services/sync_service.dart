@@ -50,6 +50,7 @@ import 'liquidaciones_service.dart';
 import 'offline_service.dart';
 import 'reservas_local.dart';
 import 'vehiculos_local.dart';
+import 'imagenes_cache.dart';
 
 /// Nombre de la tarea periódica (WorkManager).
 const String kSyncTaskUnique = 'mecsa_backup_diario';
@@ -500,6 +501,12 @@ class SyncService extends ChangeNotifier {
       log.w('sync', 'Liquidaciones no se pudieron bajar', error: e);
     }
 
+    // Fotos de la flotilla (caché de vehículos) para verlas sin conexión.
+    try {
+      final veh = (await cache.get('vehiculos'))?.asList() ?? [];
+      await ImagenesCache.instance.precargar(veh.map((v) => (v['image'] ?? '').toString()));
+    } catch (_) {}
+
     // Vehículos personales del empleado (kilometraje de visitas).
     try {
       final res = await sb
@@ -543,6 +550,21 @@ class SyncService extends ChangeNotifier {
           pend.any((o) => o['localId'] == v['id'].toString()));
       await cache.put('visitas', [...locales, ...rows]);
       total += rows.length;
+      // Fotos de visitas para verlas sin conexión.
+      _paso = 'Descargando fotos…';
+      notifyListeners();
+      await _notificarProgreso(_paso!);
+      final fotos = <String>[];
+      for (final v in rows) {
+        final f = v['fotos'];
+        if (f is List) {
+          fotos.addAll(f.map((x) => x is Map ? (x['url'] ?? x['path'] ?? '').toString() : x.toString()));
+        }
+        for (final k in ['foto_odometro_inicio', 'foto_odometro_fin', 'comprobante_pago']) {
+          fotos.add((v[k] ?? '').toString());
+        }
+      }
+      await ImagenesCache.instance.precargar(fotos);
     } catch (e) {
       log.w('sync', 'Visitas no se pudieron bajar', error: e);
     }

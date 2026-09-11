@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../widgets/cached_image.dart';
+import '../widgets/foto_viewer.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -460,29 +462,29 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                 const SizedBox(height: 8),
                 GestureDetector(
                   onTap: () async {
-                    final uri = Uri.parse(comprobanteUrl!);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    if (comprobanteUrl!.toLowerCase().endsWith('.pdf')) {
+                      final uri = Uri.parse(comprobanteUrl);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      }
+                      return;
                     }
+                    if (!context.mounted) return;
+                    FotoViewer.abrir(context,
+                        fotos: [comprobanteUrl], titulos: const ['Comprobante de pago']);
                   },
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        Image.network(
+                        CachedImage(
                           comprobanteUrl,
                           height: 160,
                           width: double.infinity,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
-                            height: 80,
-                            color: Colors.grey[100],
-                            child: const Center(
-                              child: Icon(Icons.picture_as_pdf,
-                                  color: Colors.red, size: 40),
-                            ),
-                          ),
+                          fallbackIcon: Icons.picture_as_pdf,
+                          fallbackSize: 40,
                         ),
                         Container(
                           height: 160,
@@ -664,19 +666,28 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
       itemCount: photos.length,
       itemBuilder: (context, index) {
         // Manejar tanto String como Map<String, dynamic>
-        final raw = photos[index];
-        final String url = raw is String
+        String urlDe(dynamic raw) => raw is String
             ? raw
             : (raw is Map ? (raw['url'] ?? raw['path'] ?? '').toString() : '');
+        final String url = urlDe(photos[index]);
         if (url.isEmpty) return const SizedBox.shrink();
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            url,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(
-              color: Colors.grey[200],
-              child: const Icon(Icons.broken_image, color: Colors.grey),
+        final todas = photos.map(urlDe).where((u) => u.isNotEmpty).toList();
+        return GestureDetector(
+          onTap: () => FotoViewer.abrir(
+            context,
+            fotos: todas,
+            inicial: todas.indexOf(url),
+            titulos: VisitaPdfService.fotosDe(_visita)
+                .where((e) => todas.contains(e.value))
+                .map((e) => e.key)
+                .toList(),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: CachedImage(
+              url,
+              fit: BoxFit.cover,
+              fallbackIcon: Icons.broken_image,
             ),
           ),
         );

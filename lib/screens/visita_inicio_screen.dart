@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../widgets/cached_image.dart';
 import '../utils/mensajes_error.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -1113,11 +1114,11 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
                 : (context.read<AppProvider>().visitas.firstWhere((v) => v['id'].toString() == _visitaId, orElse: () => {})['foto_odometro_fin'] != null)
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(16),
-                        child: Image.network(
-                          context.read<AppProvider>().visitas.firstWhere((v) => v['id'].toString() == _visitaId)['foto_odometro_fin'],
+                        child: CachedImage(
+                          context.read<AppProvider>().visitas.firstWhere((v) => v['id'].toString() == _visitaId)['foto_odometro_fin']?.toString(),
                           height: 160, width: double.infinity,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => const Center(child: Text('Error al cargar foto previa')),
+                          fallbackIcon: Icons.speed,
                         ),
                       )
                     : Container(

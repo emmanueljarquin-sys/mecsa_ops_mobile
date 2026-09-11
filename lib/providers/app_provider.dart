@@ -20,6 +20,7 @@ import '../services/offline_service.dart';
 import '../utils/mensajes_error.dart';
 import '../services/reservas_local.dart';
 import '../services/vehiculos_local.dart';
+import '../services/imagenes_cache.dart';
 import '../services/sync_service.dart';
 import '../services/tracking_service.dart';
 
@@ -1128,6 +1129,9 @@ class AppProvider extends ChangeNotifier {
           .toList()
           .cast<Map<String, dynamic>>();
       cache.put('vehiculos', vehiculos);
+      // Fotos de la flotilla listas para verlas sin conexión (segundo plano).
+      ImagenesCache.instance.precargar(
+          vehiculos.map((v) => (v['image'] ?? '').toString()));
     } catch (e, st) {
       log.e('fetchData', 'Falló la carga de vehículos', error: e, stack: st);
       rethrow;
@@ -1223,9 +1227,27 @@ class AppProvider extends ChangeNotifier {
       // Conteo para el dashboard
       rutasActivas = visitas.where((v) => v['estado'] == 'en_curso').length;
       cache.put('visitas', visitas);
+      ImagenesCache.instance.precargar(_fotosDeVisitas(visitas));
     } catch (e) {
       // Se mantienen las visitas previas (o de caché) en vez de vaciar.
       _fallo('visitas', e);
+    }
+  }
+
+  /// URLs de todas las fotos de una lista de visitas (adjuntas, odómetros,
+  /// comprobante de pago) para precargarlas en la caché de imágenes.
+  static Iterable<String> _fotosDeVisitas(List<Map<String, dynamic>> lista) sync* {
+    for (final v in lista) {
+      final fotos = v['fotos'];
+      if (fotos is List) {
+        for (final f in fotos) {
+          yield f is Map ? (f['url'] ?? f['path'] ?? '').toString() : f.toString();
+        }
+      }
+      for (final k in ['foto_odometro_inicio', 'foto_odometro_fin', 'comprobante_pago']) {
+        final s = (v[k] ?? '').toString();
+        if (s.startsWith('http')) yield s;
+      }
     }
   }
 

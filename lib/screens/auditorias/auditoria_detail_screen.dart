@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../widgets/cached_image.dart';
 import 'package:intl/intl.dart';
 import '../../models/auditoria.dart';
 import '../../services/auditoria_service.dart';
@@ -212,10 +213,8 @@ class _AuditoriaDetailScreenState extends State<AuditoriaDetailScreen> {
   Widget _thumb(String url, double size) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: Image.network(url, width: size, height: size, fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => Container(
-              width: size, height: size, color: Colors.grey.shade200,
-              child: const Icon(Icons.broken_image, color: Colors.grey))),
+      child: CachedImage(url, width: size, height: size, fit: BoxFit.cover,
+          fallbackIcon: Icons.broken_image),
     );
   }
 

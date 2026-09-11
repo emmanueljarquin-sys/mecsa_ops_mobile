@@ -100,6 +100,8 @@ flowchart TD
 
 ## 3.4 Detalle de reserva y acciones disponibles
 
+Los botones de registro salen de `AppProvider.getRegistrosReserva(id)`: con red consulta `registros_vehiculos` y guarda el resultado en la caché; sin red usa la caché. En ambos casos agrega los registros que están en la cola offline (`_pendiente: true`), así la pantalla sabe que la salida ya se hizo aunque no haya subido, muestra el aviso naranja y habilita la entrada. Las reservas se leen de la tabla `reservas` de SQLite, sobrescrita con el API en cada carga; **crear una reserva exige conexión** (el formulario desactiva el botón y `createReservation()` rechaza sin red).
+
 Fuente: [reservation_detail_screen.dart](../lib/screens/reservation_detail_screen.dart).
 
 ```mermaid
@@ -162,15 +164,16 @@ sequenceDiagram
     participant DB as flotilla.registros_vehiculos
     participant Track as TrackingService
 
+    Note over UI: sin internet muestra un banner naranja:<br/>"puedes registrar la salida/entrada, se subirá sola"
     U->>UI: 5 fotos + kilometraje + datos según tipo
-    U->>UI: Guardar
-    UI->>Offline: hayConexion()
+    U->>UI: Guardar (bandera _isSaving propia, no provider.isLoading)
+    UI->>Offline: hayConexion() (sondeo HTTP real)
     alt sin conexión
         UI->>Offline: enqueue('registro_vehiculo', record, photos)
         Note over Offline: ver doc 08. Fotos copiadas a offline_photos/
         UI->>U: "Guardado sin conexión. Se subirá solo cuando haya internet."
     else con conexión
-        UI->>Provider: saveVehicleRegister(reservaId, tipo, fotos, datos)
+        UI->>Provider: saveVehicleRegister(...).timeout(45 s) — si vence, se encola
         Provider->>DB: SELECT id WHERE reserva_id AND tipo AND estado != 'Rechazado' LIMIT 1 (timeout 15s)
         alt ya existe
             Provider-->>UI: true (idempotente, no duplica)

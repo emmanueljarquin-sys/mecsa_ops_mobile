@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../widgets/cached_image.dart';
+import '../widgets/animated_tabs.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -350,7 +352,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             // Aviso global: sin internet o carga fallida (datos desde caché).
             const ConnectionBanner(),
             Expanded(
-              child: IndexedStack(index: provider.currentIndex, children: screens),
+              // Cambio de pestaña animado (desliza + desvanece) conservando
+              // el estado de cada pantalla como hacía IndexedStack.
+              child: AnimatedTabs(index: provider.currentIndex, children: screens),
             ),
           ],
         ),
@@ -768,14 +772,11 @@ class DashboardTab extends StatelessWidget {
                                     : Supabase.instance.client.storage
                                         .from('flotilla')
                                         .getPublicUrl(fotoUrl);
-                                return Image.network(
+                                return CachedImage(
                                   finalUrl,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (ctx, _, __) => const Icon(
-                                    Icons.directions_car,
-                                    size: 40,
-                                    color: Colors.grey,
-                                  ),
+                                  fallbackIcon: Icons.directions_car,
+                                  fallbackSize: 40,
                                 );
                               })
                             : const Icon(

@@ -19,7 +19,9 @@ No tiene backend propio. Habla directamente con **Supabase** (Postgres vía Post
 | Geolocalización | `geolocator`, `google_maps_flutter` | Tracking, navegación, mapas |
 | Voz | `flutter_tts` | Instrucciones de navegación |
 | Offline | `connectivity_plus`, `shared_preferences`, `path_provider` | Cola de sincronización |
-| Documentos | `pdf`, `printing`, `gal`, `image_picker` | PDF de ruta, fotos |
+| Documentos | `pdf`, `printing`, `gal`, `image_picker`, `share_plus` | PDF de ruta, liquidación y visita; fotos a galería |
+| Datos locales | `sqflite`, `path_provider` | SQLite (caché, cola offline, reservas, liquidaciones, vehículos, log) y fotos/comprobantes en la carpeta de la app |
+| Fondo | `workmanager` | Copia de seguridad programada (diaria/semanal/mensual) |
 | CI | Codemagic (`codemagic.yaml`) | AAB automático en cada push a `main` |
 
 ## 1.3 Diagrama de componentes
@@ -32,15 +34,19 @@ flowchart TB
         Provider["AppProvider<br/>estado global, sesión, permisos,<br/>fetch de datos, tracking"]
         subgraph Services["Servicios lib/services/*"]
             Offline["OfflineService<br/>cola offline"]
+            Sync["SyncService<br/>copia de seguridad"]
+            Conn["ConnectivityService<br/>sondeo de internet"]
             Liq["LiquidacionesService"]
             Admin["AdminService"]
             Aud["AuditoriaService"]
             Mfa["MfaService"]
             Track["TrackingService"]
-            Pdf["RutaPdfService"]
+            Pdf["RutaPdfService<br/>LiquidacionPdfService<br/>VisitaPdfService"]
         end
-        Prefs[("SharedPreferences<br/>gps_muted, gps_voice_name,<br/>offline_queue_v1")]
-        FS[("Archivos<br/>offline_photos/")]
+        SQLite[("SQLite mecsa_ops_local.db<br/>cache · offline_queue · reservas<br/>liquidaciones · vehiculos · id_map · app_log")]
+        Prefs[("SharedPreferences<br/>gps_*, log_*, backup_*")]
+        FS[("Archivos<br/>offline_photos/ · comprobantes/")]
+        WM["WorkManager<br/>tarea diaria"]
     end
 
     subgraph Supabase["Supabase awhuzekjpoapamijlvua"]
@@ -93,15 +99,24 @@ flowchart TB
     PHP --> FCM
 ```
 
+### Navegación y animaciones
+
+El shell (`HomeScreen`) muestra las 5 pestañas con `AnimatedTabs` ([widgets/animated_tabs.dart](../lib/widgets/animated_tabs.dart)): todas quedan montadas (como `IndexedStack`, sin perder scroll ni formularios) y el cambio hace un deslizamiento corto con desvanecido en la dirección del movimiento. Entre páginas (`Navigator.push`) el tema define `pageTransitionsTheme` con `FadeForwardsPageTransitionsBuilder` en Android y el deslizamiento nativo en iOS. Las fotos de visitas abren en `FotoViewer` ([widgets/foto_viewer.dart](../lib/widgets/foto_viewer.dart)): modal a pantalla completa con zoom, paginación, descarga a la galería y compartir.
+
 ## 1.4 Estructura de carpetas
 
 ```
 lib/
-├── main.dart                 # Inicializa Supabase, Firebase, OfflineService; decide Login vs Home
+├── main.dart                 # Inicializa Supabase, Firebase, OfflineService y WorkManager; decide Login vs Home
 ├── providers/
-│   └── app_provider.dart     # Estado global (1.7k líneas): sesión, empleado, permisos, fetchData, reservas, visitas, tracking
+│   └── app_provider.dart     # Estado global (2.4k líneas): sesión, empleado, permisos, fetchData, reservas, visitas, tracking
 ├── services/
-│   ├── offline_service.dart  # Cola offline (registros, facturas, liquidaciones)
+│   ├── local_db.dart         # SQLite: esquema y migraciones (dbVersion 4)
+│   ├── offline_service.dart  # Cola offline (registros, facturas, liquidaciones, visitas)
+│   ├── sync_service.dart     # Copia de seguridad manual y programada (WorkManager)
+│   ├── connectivity_service.dart · cache_service.dart
+│   ├── reservas_local.dart · liquidaciones_local.dart · vehiculos_local.dart
+│   ├── comprobantes_service.dart · liquidacion_pdf_service.dart · visita_pdf_service.dart
 │   ├── liquidaciones_service.dart
 │   ├── admin_service.dart
 │   ├── auditoria_service.dart

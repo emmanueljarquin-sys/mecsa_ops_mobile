@@ -1,13 +1,40 @@
+<div align="center">
+
+<img src="assets/images/ops_icon.png" alt="MecsaOPS" width="96" />
+
 # MecsaOPS Mobile
 
-App móvil de operaciones de **Grupo Mecsa** para el personal de campo. Reservas y uso de vehículos de la flotilla, liquidación de viáticos, visitas con pago de kilometraje, auditorías de vehículos y un modo de administración para aprobar desde el teléfono.
+**La app de operaciones de campo de Grupo Mecsa.**
+Flotilla · Viáticos · Visitas · Auditorías · Administración
+
+![Flutter](https://img.shields.io/badge/Flutter-3.47-02569B?logo=flutter&logoColor=white)
+![Dart](https://img.shields.io/badge/Dart-%5E3.10-0175C2?logo=dart&logoColor=white)
+![Android](https://img.shields.io/badge/Android-Play%20Store-3DDC84?logo=android&logoColor=white)
+![iOS](https://img.shields.io/badge/iOS-App%20Store-000000?logo=apple&logoColor=white)
+![Supabase](https://img.shields.io/badge/Backend-Supabase-3FCF8E?logo=supabase&logoColor=white)
+![Codemagic](https://img.shields.io/badge/CI-Codemagic-F45E3F?logo=codemagic&logoColor=white)
+![Versión](https://img.shields.io/badge/versi%C3%B3n-1.5.8%2B36-013483)
+
+<br/>
+
+| 📴 **Funciona sin conexión** | 🔄 **Sincroniza sola** | 🗂️ **Copia de seguridad** | 📄 **Exporta PDF** |
+|:---:|:---:|:---:|:---:|
+| Registros, liquidaciones y visitas se guardan en el teléfono y se suben al volver la red. Las fotos ya sincronizadas se ven sin red | Al recuperar internet, cada 45 s con pendientes y en la copia programada | Diaria, semanal o mensual, solo WiFi o con datos | Rutas, liquidaciones con comprobantes y visitas con fotos, listos para compartir |
+
+</div>
+
+---
+
+App móvil de operaciones de **Grupo Mecsa** para el personal de campo. Reservas y uso de vehículos de la flotilla, liquidación de viáticos, visitas con pago de kilometraje, auditorías de vehículos y un modo de administración para aprobar desde el teléfono. Todo el trabajo de campo funciona **sin conexión**: se guarda en SQLite y se sincroniza solo.
 
 | | |
 |---|---|
 | **Versión** | 1.5.8+36 |
 | **Plataformas** | Android (Play Store, `com.grupomecsa.mecsa_ops_mobile`) e iOS |
-| **Framework** | Flutter 3 · Dart SDK ^3.10 |
+| **Framework** | Flutter 3.47 · Dart SDK ^3.10 |
 | **Backend** | Supabase (Postgres, Auth, Storage, Realtime) + API PHP de la web OPS |
+| **Datos locales** | SQLite (`sqflite`): caché, cola offline, reservas, liquidaciones, vehículos, log |
+| **Tareas de fondo** | WorkManager (copia de seguridad programada) |
 | **CI** | Codemagic: AAB automático en cada push a `main` |
 | **Documentación técnica** | [docs/](docs/README.md) con diagramas de secuencia por módulo |
 
@@ -20,6 +47,8 @@ App móvil de operaciones de **Grupo Mecsa** para el personal de campo. Reservas
 - [Cómo fluye una operación típica](#cómo-fluye-una-operación-típica)
 - [Módulos](#módulos)
 - [Modo offline](#modo-offline)
+- [Copia de seguridad](#copia-de-seguridad)
+- [Exportar y compartir](#exportar-y-compartir)
 - [Seguridad y acceso](#seguridad-y-acceso)
 - [Estructura del código](#estructura-del-código)
 - [Configuración y ejecución local](#configuración-y-ejecución-local)
@@ -58,6 +87,15 @@ mindmap
       Aprobar reservas
       Responder correcciones
       Desbloquear empleados
+    Sin conexión
+      Todo en SQLite
+      Cola de subida
+      Sincroniza sola
+      Copia programada
+    Perfil
+      Copias de seguridad
+      Registro de actividad
+      Voz del GPS
     Transversal
       Login + MFA TOTP
       Push FCM
@@ -180,7 +218,9 @@ stateDiagram-v2
     EnUso --> Completada: registro de entrada
 ```
 
-- Validación de traslape de horarios y disponibilidad del vehículo.
+- Validación de traslape de horarios y disponibilidad del vehículo. **Crear una reserva requiere conexión**; el formulario lo avisa y desactiva el botón.
+- **Salida y entrada funcionan sin conexión**: el registro (con sus 5 fotos) se guarda en el teléfono con un banner de aviso y se sube solo. El detalle de la reserva lo muestra como "pendiente de subir" hasta que el servidor confirma.
+- Las reservas del empleado se guardan en SQLite y se sobrescriben con lo que devuelve el API.
 - **Bloqueo por strikes**: con 3 o más reservas vencidas sin registrar salida, la función SQL `aplicar_bloqueo_si_corresponde` bloquea al empleado. Un admin puede desbloquear y marcar una excepción.
 - El tracking GPS inserta puntos en `visitas.ops_tracking` cada 10 metros.
 - Detalle en [docs/03-flotilla.md](docs/03-flotilla.md).
@@ -190,6 +230,9 @@ stateDiagram-v2
 Liquidación de gastos con facturas fotografiadas. Se crea vía `create_liquidacion.php`, que valida al empleado, al proyecto y exige descripción de 15 caracteres cuando no hay proyecto.
 
 - Solo editable mientras está `pendiente`.
+- **Sin conexión** se puede crear una liquidación completa (facturas y fotos): queda pendiente en la lista y se sube sola. El personal incluido y los últimos 100 proyectos están en caché para el formulario.
+- Las liquidaciones del último mes, con facturas, viven en SQLite: la lista y el detalle abren sin red.
+- Los **comprobantes se ven dentro de la app** (zoom) y quedan en caché. **Exportar PDF** arma datos, facturas, totales y una página por comprobante, y abre el menú de compartir.
 - Después de aprobada o rechazada el empleado puede **solicitar corrección**.
 - El resultado llega por dos vías: notificación local vía **Realtime** y push **FCM** desde el servidor.
 - Detalle en [docs/04-viaticos.md](docs/04-viaticos.md).
@@ -198,6 +241,8 @@ Liquidación de gastos con facturas fotografiadas. Se crea vía `create_liquidac
 
 Recorridos con el **vehículo personal** del empleado. Un wizard de tres pasos captura odómetro inicial con foto, traza el recorrido con waypoints y cierra con odómetro final y observaciones.
 
+- **Sin conexión** se puede iniciar, recorrer y cerrar una visita: se encola con un id local y el servidor calcula kilómetros y monto al subir. Los vehículos personales del empleado están en SQLite para el selector.
+- El detalle exporta un **PDF con fotos** para compartir y guarda las fotos en la galería.
 - `finish_visita.php` calcula kilómetros, aplica un tarifario por tipo de vehículo, combustible y antigüedad, y guarda el monto a pagar.
 - Cuando un admin confirma el pago en la web, la app recibe un push con `tipo: pago_kilometraje` y abre el detalle con el comprobante.
 - Detalle en [docs/05-visitas.md](docs/05-visitas.md).
@@ -226,24 +271,61 @@ La app envía `actor_id` y el servidor re-lee el rol desde la base de datos. Det
 
 ## Modo offline
 
-No hay SQLite. La app guarda una **cola de escritura** en `SharedPreferences` (clave `offline_queue_v1`) y copia las fotos a la carpeta de documentos. Al recuperar la red, `connectivity_plus` dispara la sincronización.
+Todo lo que el personal de campo necesita se guarda en **SQLite** (`mecsa_ops_local.db`) y se sincroniza solo. Sin red la app **muestra** reservas, liquidaciones, visitas y vehículos, y **permite** registrar salida/entrada, crear liquidaciones y hacer visitas completas. Lo único que exige conexión es crear una reserva (hay que validar disponibilidad en el momento) y editar registros ya subidos.
 
 ```mermaid
 flowchart LR
-    A["Usuario guarda<br/>sin red"] --> B["Cola local<br/>+ fotos copiadas"]
-    B --> C{"¿vuelve<br/>la red?"}
-    C -->|sí| D["Sube fotos<br/>a Storage"]
+    A["Usuario guarda<br/>sin red"] --> B["offline_queue (SQLite)<br/>+ fotos copiadas<br/>+ banner de aviso"]
+    B --> C{"¿internet real?"}
+    C -->|"al volver la red<br/>cada 45 s<br/>copia programada<br/>botón Sincronizar"| D["Sube fotos<br/>a Storage"]
     D --> E["INSERT o<br/>POST al API"]
-    E -->|ok| F["Borra de la cola<br/>y fotos locales"]
+    E -->|ok| F["Marca 'subido'<br/>(historial 30 días)<br/>refresca la lista"]
     E -->|error| G["attempts++<br/>queda pendiente"]
     G --> C
 ```
 
-- Tipos soportados: registro de vehículo, liquidación con facturas, factura suelta.
-- Una operación **nunca se borra** hasta que el servidor confirma.
-- Los registros de vehículo tienen chequeo de duplicados; las liquidaciones no.
-- Solo escritura. Sin red no se pueden consultar datos que no estén ya en memoria.
+| Tabla SQLite | Qué guarda |
+|--------------|------------|
+| `offline_queue` | Operaciones pendientes y subidas: registro de vehículo, liquidación, factura, visita (crear, inicio, waypoints, fin) |
+| `reservas` | Reservas del empleado, sobrescritas con el API |
+| `liquidaciones` | Último mes con facturas, más las creadas sin conexión |
+| `vehiculos` | Vehículos personales del empleado |
+| `cache` | Última respuesta de cada consulta: perfil, flotilla, proyectos, empleados, visitas, personal y proyectos del formulario de liquidación |
+| Carpetas | `offline_photos/` (fotos pendientes de subir), `imagenes/` y `comprobantes/` (fotos y comprobantes ya vistos o precargados, visibles sin red) |
+| `id_map` | Id local → id del servidor para operaciones encadenadas |
+| `app_log` | Registro de actividad |
+
+- Una operación **nunca se borra** hasta que el servidor confirma; después queda como historial visible en Perfil → Copias de seguridad.
+- `hayConexion()` hace un sondeo HTTP real al backend (4 s): con WiFi sin salida se encola de inmediato.
+- Los ids locales (`local-…`) de visitas y liquidaciones creadas sin conexión se traducen al id real al subir.
 - Detalle en [docs/08-modo-offline.md](docs/08-modo-offline.md).
+
+---
+
+## Copia de seguridad
+
+Perfil → **Copias de seguridad** funciona como la copia de WhatsApp: sube lo pendiente, vuelve a bajar reservas, liquidaciones, visitas y vehículos a SQLite, y muestra una notificación de progreso.
+
+| Opción | Valores |
+|--------|---------|
+| Frecuencia | Diaria · semanal (día de la semana) · mensual (día del mes) |
+| Hora | Configurable, 02:00 por defecto |
+| Red | Solo WiFi (por defecto) · WiFi o datos móviles |
+| Manual | Botón "Sincronizar ahora" (ignora la restricción de red) |
+
+La tarea corre con **WorkManager** aunque la app esté cerrada. La pantalla muestra la última copia, los pendientes con su último error y el historial de lo subido. Detalle en [docs/08-modo-offline.md §8.7](docs/08-modo-offline.md).
+
+---
+
+## Exportar y compartir
+
+| Desde | Qué genera |
+|-------|------------|
+| Detalle de reserva | PDF del recorrido con fotos de salida y entrada; fotos a la galería |
+| Detalle de liquidación | PDF con datos, tabla de facturas, totales y una página por comprobante |
+| Detalle de visita | PDF con datos, recorrido y una página por foto; fotos a la galería. Cada foto abre a pantalla completa con zoom, descarga y compartir |
+
+Todos abren el menú de compartir del sistema (WhatsApp, correo, Drive, guardar) y funcionan sin conexión con lo que haya en caché.
 
 ---
 
@@ -275,32 +357,42 @@ flowchart TD
 
 ```
 lib/
-├── main.dart                     Inicializa Supabase, Firebase y la cola offline. Login vs Home.
-├── providers/app_provider.dart   Estado global: sesión, empleado, permisos, fetchData, reservas, visitas.
+├── main.dart                        Inicializa Supabase, Firebase, cola offline y WorkManager. Login vs Home.
+├── providers/app_provider.dart      Estado global: sesión, empleado, permisos, fetchData, reservas, visitas.
 ├── services/
-│   ├── offline_service.dart      Cola de sincronización.
-│   ├── liquidaciones_service.dart
-│   ├── admin_service.dart
-│   ├── auditoria_service.dart
-│   ├── mfa_service.dart
-│   ├── tracking_service.dart     Stream GPS → visitas.ops_tracking.
-│   └── ruta_pdf_service.dart
-├── models/                       reservation, liquidacion, auditoria
+│   ├── local_db.dart                SQLite: esquema y migraciones (v4).
+│   ├── offline_service.dart         Cola de sincronización (offline_queue) y handlers por tipo.
+│   ├── sync_service.dart            Copia de seguridad: manual y programada (WorkManager), notificación.
+│   ├── connectivity_service.dart    Red + sondeo real de internet.
+│   ├── cache_service.dart           Caché JSON de consultas (tabla cache).
+│   ├── reservas_local.dart          Tabla reservas.
+│   ├── liquidaciones_local.dart     Tabla liquidaciones (último mes + creadas offline).
+│   ├── vehiculos_local.dart         Tabla vehiculos (personales del empleado).
+│   ├── comprobantes_service.dart    Caché local de comprobantes de facturas.
+│   ├── imagenes_cache.dart          Caché local de fotos (vehículos, visitas, auditorías).
+│   ├── liquidaciones_service.dart   Liquidaciones y facturas (con caché de personal y proyectos).
+│   ├── ruta_pdf_service.dart · liquidacion_pdf_service.dart · visita_pdf_service.dart
+│   ├── admin_service.dart · auditoria_service.dart · mfa_service.dart
+│   ├── tracking_service.dart        Stream GPS → visitas.ops_tracking.
+│   └── app_logger.dart              Registro de actividad (app_log).
+├── models/                          reservation, liquidacion, auditoria
 ├── screens/
-│   ├── home_screen.dart          Shell con 5 pestañas + Dashboard.
+│   ├── home_screen.dart             Shell con 5 pestañas + Dashboard.
 │   ├── login_screen.dart · mfa_*_screen.dart
 │   ├── flotilla_screen.dart · reservation_*.dart · vehicle_register_screen.dart · trip_nav_screen.dart
-│   ├── viaticos_screen.dart · liquidacion_*.dart
+│   ├── viaticos_screen.dart · liquidacion_*.dart · comprobante_viewer_screen.dart
 │   ├── visitas_screen.dart · visita_*.dart · map_picker_screen.dart
+│   ├── backup_settings_screen.dart  Perfil → Copias de seguridad.
+│   ├── app_log_screen.dart · log_settings_screen.dart
 │   ├── auditorias/
 │   ├── admin/
 │   └── profile_screen.dart
-├── widgets/
+├── widgets/                         connection_banner, offline_notice, cached_image, foto_viewer, animated_tabs, correccion_widgets
 ├── theme/
-└── utils/
+└── utils/                           mensajes_error (errores legibles), num_parse
 ```
 
-Dependencias principales: `supabase_flutter`, `provider`, `firebase_messaging`, `flutter_local_notifications`, `geolocator`, `google_maps_flutter`, `flutter_tts`, `connectivity_plus`, `shared_preferences`, `path_provider`, `image_picker`, `pdf`, `printing`, `gal`.
+Dependencias principales: `supabase_flutter`, `provider`, `sqflite`, `workmanager`, `firebase_messaging`, `flutter_local_notifications`, `geolocator`, `google_maps_flutter`, `flutter_tts`, `connectivity_plus`, `shared_preferences`, `path_provider`, `image_picker`, `pdf`, `printing`, `gal`, `share_plus`.
 
 ---
 
@@ -308,17 +400,20 @@ Dependencias principales: `supabase_flutter`, `provider`, `firebase_messaging`, 
 
 ### Requisitos
 
-- Flutter estable con Dart ^3.10.
-- Android Studio o Xcode según la plataforma.
+- Flutter estable 3.47 o superior (Dart ^3.10).
+- Android Studio (aporta el JDK en `jbr`) o Xcode según la plataforma. Si `java` no está en el PATH: `flutter config --jdk-dir "C:\Program Files\Android\Android Studio\jbr"`.
 - `android/app/google-services.json` (Android) y `ios/Runner/GoogleService-Info.plist` (iOS) del proyecto Firebase `mecsa-ops-mobile`. En CI se inyectan desde variables en base64.
+- VS Code con las extensiones **Dart** y **Flutter** (`.vscode/` trae la configuración de lanzamiento: F5 en debug, profile o release).
 
 ### Pasos
 
 ```bash
 flutter pub get
 dart run flutter_launcher_icons
-flutter run
+flutter run          # o F5 en VS Code
 ```
+
+El build de debug **no necesita** `android/key.properties`: la firma release solo se configura si el archivo existe. En Windows el primer build de Android tarda varios minutos porque `gradle.properties` desactiva el daemon y el paralelismo (evita bloqueos del antivirus); después usa hot reload.
 
 ### Claves y URLs
 
@@ -377,8 +472,9 @@ La carpeta [docs/](docs/README.md) contiene la documentación técnica completa 
 | [05 · Visitas](docs/05-visitas.md) | Wizard, tarifario, pago de kilometraje |
 | [06 · Auditorías](docs/06-auditorias.md) | Rúbrica, inspección, puntaje |
 | [07 · Administración](docs/07-administracion.md) | Aprobaciones, correcciones, desbloqueo, modelo de confianza |
-| [08 · Modo offline](docs/08-modo-offline.md) | Cola, persistencia, reintentos |
-| [09 · Modelo de datos](docs/09-modelo-de-datos.md) | Tablas, RPCs, buckets, endpoints, estados |
+| [08 · Modo offline](docs/08-modo-offline.md) | SQLite, cola, sincronización automática, copia de seguridad, exportación |
+| [09 · Modelo de datos](docs/09-modelo-de-datos.md) | Tablas, RPCs, buckets, endpoints, estados, base local |
 | [10 · Observaciones](docs/10-observaciones.md) | Deuda técnica y hallazgos |
+| [11 · Registro de actividad](docs/11-registro-de-actividad.md) | Log local, niveles, visor y exportación |
 
 Repositorio del backend web y API PHP: `MecsaOPS`.

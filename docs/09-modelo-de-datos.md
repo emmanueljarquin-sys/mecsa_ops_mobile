@@ -134,3 +134,19 @@ flowchart LR
 ```
 
 Nota sobre mayúsculas: reservas y registros usan `Capitalizado`, liquidaciones y visitas usan `minúsculas`. El provider cuenta liquidaciones pendientes comparando contra `'Aprobado'` (que nunca ocurre), así que en la práctica cuenta todas. Ver [Observaciones](10-observaciones.md).
+
+## 9.7 Base local SQLite (`mecsa_ops_local.db`, versión 4)
+
+Único punto de acceso: `LocalDb` ([local_db.dart](../lib/services/local_db.dart)). Las migraciones solo agregan tablas o columnas.
+
+| Tabla | Clave | Columnas principales | Quién escribe | Cuándo |
+|-------|-------|----------------------|---------------|--------|
+| `app_log` | `id` autoincrement | `ts_ms`, `level`, `module`, `message`, `data`, `error`, `stack`, `usuario`, `app_version` | `AppLogger` | Siempre (según niveles) |
+| `cache` | `key` (`email:nombre`) | `json`, `updated_ms` | `CacheService` | Tras cada consulta exitosa |
+| `offline_queue` | `id` uuid | `type`, `payload` (JSON de la operación), `created_ms`, `attempts`, `last_error`, `usuario`, `estado` (`pendiente`/`subido`), `synced_ms`, `remote_id` | `OfflineService` | Al encolar; se marca `subido` al confirmar; purga a 30 días |
+| `reservas` | `id` | `empleado_id`, `estado`, `fecha_salida`, `fecha_regreso`, `json` (fila con join `vehiculos`) | `ReservasLocal` | `_fetchMyReservations`, copia de seguridad (sobrescribe) |
+| `liquidaciones` | `id` (uuid o `local-…`) | `empleado_id`, `fecha`, `estado`, `total`, `created_ms`, `local` (0/1), `json` (con `facturas`) | `LiquidacionesLocal` | Último mes al iniciar sesión / copia; `local=1` al crear sin red; detalle abierto con red |
+| `vehiculos` | `id` | `empleado_id`, `alias`, `placa`, `json` | `VehiculosLocal` | `fetchPersonalVehicles`, copia de seguridad (sobrescribe) |
+| `id_map` | `local_id` | `remote_id`, `created_ms` | `OfflineService` | Al subir una operación creada con id local |
+
+Archivos fuera de SQLite: `offline_photos/` (fotos pendientes de subir) y `comprobantes/` (caché de comprobantes de facturas), ambos en la carpeta de documentos de la app.

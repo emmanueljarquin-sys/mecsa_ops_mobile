@@ -120,6 +120,6 @@ Reglas:
 
 ## 11.7 Otras tablas de `LocalDb`
 
-`LocalDb` es el único punto de acceso a SQLite (`dbVersion = 2`). Además de `app_log` aloja `cache` (caché de lectura, ver [Modo offline §8.0](08-modo-offline.md)). La migración de la cola offline desde `SharedPreferences` sería la siguiente. Las tablas se agregan subiendo `dbVersion` y creándolas en `_onUpgrade`, sin borrar las existentes.
+`LocalDb` es el único punto de acceso a SQLite (`dbVersion = 4`). Además de `app_log` aloja `cache`, `offline_queue`, `reservas`, `liquidaciones`, `vehiculos` e `id_map` (ver [Modo offline](08-modo-offline.md) y [Modelo de datos §9.7](09-modelo-de-datos.md)). Las tablas se agregan subiendo `dbVersion` y creándolas en `_onUpgrade`, sin borrar las existentes.
 
-Módulos de log que agregó la caché: `cache` (carga desde caché, fallos de lectura/escritura) y `conectividad` (cambios de red, resultado de cada sondeo de internet).
+Módulos de log agregados: `cache`, `conectividad` (cambios de red, sondeos), `sync` (copia de seguridad: programación, inicio, fin, tarea de fondo), `reservas`, `liquidaciones`, `vehiculos` (escrituras en SQLite) y `comprobantes` (descargas de comprobantes).

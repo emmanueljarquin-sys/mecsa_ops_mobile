@@ -220,6 +220,10 @@ La pantalla ([backup_settings_screen.dart](../lib/screens/backup_settings_screen
 - El botón "Ver" abre `ComprobanteViewerScreen` (zoom, dentro de la app). Sin red se ven los que ya están en caché; los PDF se abren con la app externa.
 - "Exportar PDF" en el detalle (`LiquidacionPdfService`) arma datos generales, tabla de facturas, totales y una página por comprobante, y lo comparte con `Printing.sharePdf`. Funciona sin conexión con lo que haya en caché.
 
+### Fotos sin conexión
+
+Todas las imágenes remotas de la app (fotos de vehículos en Flotilla, Dashboard y detalle de reserva; fotos, odómetros y comprobante de pago de visitas; fotos de auditorías) se muestran con el widget `CachedImage` ([widgets/cached_image.dart](../lib/widgets/cached_image.dart)), que resuelve el archivo con `ImagenesCache` ([services/imagenes_cache.dart](../lib/services/imagenes_cache.dart)): caché en `<documentos>/imagenes/`, descarga y guarda si hay red, o icono "no disponible sin conexión". Las fotos se **precargan** al cargar la flotilla y las visitas (`_fetchFlotilla`, `_fetchRutas`) y en cada copia de seguridad, así que lo que se sincronizó una vez se ve sin red. Las fotos tomadas sin conexión son archivos locales y se muestran directamente.
+
 ### Visitas: PDF y fotos
 
 En "Detalle de Visita" hay dos acciones: **Exportar PDF** (`VisitaPdfService`: datos, recorrido, notas y una página por foto, compartido con `Printing.sharePdf`) y **Guardar fotos** en la galería (álbum MecsaOPS, con `gal`). Ambas aceptan fotos por URL o por ruta local (visitas creadas sin conexión).

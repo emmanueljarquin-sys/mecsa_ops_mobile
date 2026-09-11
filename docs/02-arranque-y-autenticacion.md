@@ -26,7 +26,8 @@ sequenceDiagram
         Main->>Firebase: onBackgroundMessage(handler)
     end
     Main->>Offline: init()
-    Note over Offline: crea offline_photos/, carga cola<br/>de SharedPreferences, escucha conectividad,<br/>flush() inicial
+    Note over Offline: crea offline_photos/, migra la cola vieja de<br/>SharedPreferences a SQLite, carga offline_queue,<br/>escucha conectividad, reintento cada 45 s, flush() inicial
+    Main->>Main: Workmanager().initialize(syncCallbackDispatcher)<br/>SyncService.programar()
     Main->>Provider: new AppProvider(firebaseAvailable)
     Provider->>Supabase: auth.onAuthStateChange.listen
     opt firebaseAvailable

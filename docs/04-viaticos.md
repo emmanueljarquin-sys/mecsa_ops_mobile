@@ -65,8 +65,10 @@ sequenceDiagram
     UI->>Offline: hayConexion()
 
     alt sin conexión (solo liquidación nueva)
-        UI->>Offline: enqueue('liquidacion', record: toJson(), children: facturas con fotos)
-        UI->>U: "Se subirá cuando haya internet"
+        Note over UI: el formulario muestra un banner naranja;<br/>personal y últimos 100 proyectos vienen de la caché
+        UI->>SQLite: LiquidacionesLocal.guardarPendiente(local-id, liq, facturas)
+        UI->>Offline: enqueue('liquidacion', localId, record: toJson(), children: facturas con fotos)
+        UI->>U: "Se subirá cuando haya internet" (aparece en la lista como pendiente)
         Note over Offline: al reconectar ejecuta el mismo camino de abajo
     else con conexión
         UI->>Svc: createLiquidacion(liq)
@@ -93,6 +95,11 @@ sequenceDiagram
 ```
 
 ## 4.3 Detalle de liquidación
+
+`getLiquidacionDetail(id)` consulta el servidor con red y actualiza la fila en SQLite; sin red (o con id `local-…`) la lee de la tabla `liquidaciones`, recalculando los totales por tipo desde sus facturas. Al abrir el detalle con red, `ComprobantesService.precargar()` descarga los comprobantes a `<documentos>/comprobantes/`.
+
+- **Ver comprobante**: `ComprobanteViewerScreen` dentro de la app (zoom); usa la caché o la foto local de una factura pendiente de subir. Los PDF se abren con la app externa.
+- **Exportar PDF** (icono en la barra): `LiquidacionPdfService.construir()` arma datos generales, tabla de facturas, totales y una página por comprobante, y `Printing.sharePdf` abre el menú de compartir. Funciona sin red con lo que haya en caché.
 
 Fuente: [liquidacion_detail_screen.dart](../lib/screens/liquidacion_detail_screen.dart), [liquidaciones_service.dart:136-195](../lib/services/liquidaciones_service.dart#L136-L195).
 
@@ -162,6 +169,8 @@ sequenceDiagram
 ```
 
 ## 4.5 Listado de viáticos
+
+Con red pagina contra Supabase (20 por página). Sin red muestra las del último mes guardadas en SQLite con un aviso "mostrando liquidaciones guardadas", sin paginación. Las creadas sin conexión (`esLocal`) van siempre primero con icono de nube; al tocarlas se abre un resumen local en vez del detalle remoto. Las liquidaciones del último mes se bajan al iniciar sesión (`_fetchViaticos`, `fecha >= hoy - 30 días`, con sus facturas en una sola consulta `inFilter`) y en cada copia de seguridad.
 
 Fuente: [viaticos_screen.dart](../lib/screens/viaticos_screen.dart), [liquidaciones_service.dart:13-133](../lib/services/liquidaciones_service.dart#L13-L133).
 

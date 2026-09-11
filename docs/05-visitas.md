@@ -36,6 +36,8 @@ stateDiagram-v2
 
 ## 5.3 Wizard de visita en ruta (3 pasos)
 
+Todo el wizard funciona **sin conexión** (banner naranja en cada paso). `startVisitaV2` devuelve un id local (`local-…`), encola `visita_inicio` con la foto del odómetro y agrega la visita a la lista local; los waypoints se guardan en caché; `finishVisitaV2` encola `visita_fin` con los waypoints completos y muestra "Visita guardada sin conexión". Al sincronizar, la cola sube primero el inicio, traduce el id con `id_map` y llama `finish_visita.php`, que calcula km y monto. El selector de vehículo se llena desde la tabla `vehiculos` de SQLite. Ver [doc 08](08-modo-offline.md).
+
 Fuente: [visita_inicio_screen.dart](../lib/screens/visita_inicio_screen.dart), [app_provider.dart:852-983](../lib/providers/app_provider.dart#L852-L983).
 
 ```mermaid
@@ -144,12 +146,12 @@ sequenceDiagram
     App->>App: banner o navegación a la pestaña Visitas
     App->>Det: VisitaDetailScreen(visita)
     Det->>Det: muestra sección de pago: monto, fecha, comprobante
-    Det->>Storage: abre comprobante en navegador (url_launcher)
+    Det->>Storage: abre comprobante de pago en navegador (url_launcher)
 ```
 
 ## 5.6 Detalle de visita
 
-`VisitaDetailScreen` no consulta la base de datos. Trabaja sobre el mapa recibido de la lista. Muestra mapa estático, fotos (`fotos[]`, odómetro inicio y fin), timeline de destinos si existen, y acciones según estado:
+`VisitaDetailScreen` no consulta la base de datos. Trabaja sobre el mapa recibido de la lista. Muestra mapa estático, fotos (`fotos[]`, odómetro inicio y fin), timeline de destinos si existen, y acciones según estado. En la barra tiene **Exportar PDF** (`VisitaPdfService`: datos, recorrido, notas y una página por foto, compartido con `Printing.sharePdf`) y **Guardar fotos** en la galería (álbum MecsaOPS con `gal`). Ambas aceptan fotos por URL o por ruta local (visitas creadas sin conexión).
 
 | Estado | Acciones |
 |--------|----------|
