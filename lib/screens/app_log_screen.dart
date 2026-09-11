@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../utils/mensajes_error.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -303,7 +304,7 @@ class _AppLogScreenState extends State<AppLogScreen> {
               '${e.ts.toIso8601String().substring(0, 19).replaceFirst('T', ' ')}'
               '${e.usuario != null ? ' · ${e.usuario}' : ''}'
               '${e.appVersion != null ? ' · v${e.appVersion}' : ''}',
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
             ),
             const Divider(height: 24),
             _DetailBlock(title: 'Mensaje', text: e.message),
@@ -472,11 +473,11 @@ class _AppLogScreenState extends State<AppLogScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.receipt_long_outlined,
-                                size: 48, color: Colors.grey[400]),
+                                size: 48, color: AppColors.of(context).textMuted),
                             const SizedBox(height: 8),
                             Text(
                               'No hay entradas con estos filtros',
-                              style: TextStyle(color: Colors.grey[600]),
+                              style: TextStyle(color: AppColors.of(context).textSecondary),
                             ),
                           ],
                         ),
@@ -555,7 +556,7 @@ class _DetailBlock extends StatelessWidget {
         children: [
           Text(title,
               style: TextStyle(
-                  color: Colors.grey[600],
+                  color: AppColors.of(context).textSecondary,
                   fontSize: 12,
                   fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
@@ -563,7 +564,7 @@ class _DetailBlock extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color ?? Colors.grey[100],
+              color: color ?? AppColors.of(context).surfaceVariant,
               borderRadius: BorderRadius.circular(8),
             ),
             child: SelectableText(

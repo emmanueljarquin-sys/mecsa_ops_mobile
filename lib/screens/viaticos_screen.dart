@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../utils/mensajes_error.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
@@ -191,9 +192,9 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
               ],
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Esta liquidación se guardó sin conexión. Se subirá automáticamente cuando haya internet.',
-              style: TextStyle(color: Colors.black54, fontSize: 13),
+              style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 16),
             Text('Fecha: ${l.fecha.toIso8601String().split('T').first}'),
@@ -244,7 +245,7 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.of(context).background,
       body: SafeArea(
         child: Column(
           children: [
@@ -254,7 +255,7 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Column(
+                  Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
@@ -262,7 +263,7 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF212529),
+                          color: AppColors.of(context).textPrimary,
                         ),
                       ),
                       SizedBox(height: 4),
@@ -354,7 +355,7 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.grey[800],
+                                    color: AppColors.of(context).textSecondary,
                                   ),
                                 ),
                                 const SizedBox(height: 8),
@@ -390,7 +391,7 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
                                         Icon(
                                           Icons.description_outlined,
                                           size: 64,
-                                          color: Colors.grey[400],
+                                          color: AppColors.of(context).textMuted,
                                         ),
                                         const SizedBox(height: 16),
                                         Text(
@@ -398,13 +399,13 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
                                           style: TextStyle(
                                             fontSize: 18,
                                             fontWeight: FontWeight.bold,
-                                            color: Colors.grey[600],
+                                            color: AppColors.of(context).textSecondary,
                                           ),
                                         ),
                                         const SizedBox(height: 8),
                                         Text(
                                           'Crea tu primera liquidación',
-                                          style: TextStyle(color: Colors.grey[500]),
+                                          style: TextStyle(color: AppColors.of(context).textMuted),
                                         ),
                                       ],
                                     ),
@@ -494,7 +495,7 @@ class _FilterChip extends StatelessWidget {
               border: Border.all(
                 color: isSelected
                     ? Theme.of(context).primaryColor
-                    : Colors.grey[300]!,
+                    : AppColors.of(context).surfaceVariant!,
               ),
             ),
             child: Text(
@@ -551,11 +552,11 @@ class _LiquidacionCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.of(context).surface,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: AppColors.of(context).shadow,
               blurRadius: 10,
               offset: const Offset(0, 2),
             ),
@@ -591,10 +592,10 @@ class _LiquidacionCard extends StatelessWidget {
                     children: [
                       Text(
                         liquidacion.empleadoCompleto,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: Color(0xFF212529),
+                          color: AppColors.of(context).textPrimary,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -643,10 +644,10 @@ class _LiquidacionCard extends StatelessWidget {
                 ),
                 Text(
                   '₡${liquidacion.totalGeneral.toStringAsFixed(2)}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 18,
-                    color: Color(0xFF212529),
+                    color: AppColors.of(context).textPrimary,
                   ),
                 ),
               ],

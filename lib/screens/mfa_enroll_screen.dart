@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -83,7 +84,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: const Text("Activar 2FA"),
         backgroundColor: const Color(0xFF013483),
@@ -121,9 +122,9 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               "Google Authenticator, Microsoft Authenticator o Authy.",
-              style: TextStyle(color: Colors.black54, fontSize: 13),
+              style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 24),
             const Text(
@@ -134,7 +135,7 @@ class _MfaEnrollScreenState extends State<MfaEnrollScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.of(context).surface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFFE5E7EB)),
               ),

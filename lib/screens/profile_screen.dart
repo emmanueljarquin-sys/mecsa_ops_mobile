@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../services/app_logger.dart';
@@ -6,6 +7,7 @@ import 'app_log_screen.dart';
 import 'log_settings_screen.dart';
 import 'backup_settings_screen.dart';
 import '../services/sync_service.dart';
+import '../services/theme_controller.dart';
 import '../services/offline_service.dart';
 
 import 'dart:io';
@@ -130,7 +132,7 @@ class ProfileScreen extends StatelessWidget {
                     onTap: () => _showPickerOptions(context),
                     child: CircleAvatar(
                       radius: 50,
-                      backgroundColor: Colors.grey[200],
+                      backgroundColor: AppColors.of(context).surfaceVariant,
                       backgroundImage: hasPhoto ? NetworkImage(photoUrl!) : null,
                       onBackgroundImageError: hasPhoto ? (_, __) {} : null,
                       child: hasPhoto
@@ -163,7 +165,7 @@ class ProfileScreen extends StatelessWidget {
             ),
             Text(
               emp?['email'] ?? user?.email ?? '',
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              style: TextStyle(fontSize: 14, color: AppColors.of(context).textSecondary),
             ),
             const SizedBox(height: 8),
             if (emp?['departamento'] != null)
@@ -228,7 +230,7 @@ class ProfileScreen extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text(
                 "Guarda en el teléfono lo que la app hace y lo que falla, para ayudar a TI a diagnosticar problemas.",
-                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
               ),
             ),
             const SizedBox(height: 8),
@@ -259,6 +261,44 @@ class ProfileScreen extends StatelessWidget {
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
+                "Apariencia",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Consumer<ThemeController>(
+              builder: (context, tc, _) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  tc.mode == ThemeMode.dark
+                      ? Icons.dark_mode
+                      : tc.mode == ThemeMode.light
+                          ? Icons.light_mode
+                          : Icons.brightness_auto,
+                  color: Colors.blue,
+                ),
+                title: const Text("Tema"),
+                subtitle: Text(tc.etiqueta),
+                trailing: SegmentedButton<ThemeMode>(
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                  segments: const [
+                    ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.brightness_auto, size: 18), tooltip: 'Sistema'),
+                    ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode, size: 18), tooltip: 'Claro'),
+                    ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode, size: 18), tooltip: 'Oscuro'),
+                  ],
+                  selected: {tc.mode},
+                  onSelectionChanged: (v) => tc.set(v.first),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 8),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
                 "Copias de seguridad",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
@@ -268,7 +308,7 @@ class ProfileScreen extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Text(
                 "Sube lo guardado sin conexión y mantiene una copia de tus datos en el teléfono.",
-                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
               ),
             ),
             const SizedBox(height: 8),
@@ -547,7 +587,7 @@ class _ProfileItem extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
                 ),
                 Text(
                   value,

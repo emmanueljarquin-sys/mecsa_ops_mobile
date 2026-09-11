@@ -9,6 +9,7 @@
 // Toda la lógica vive en SyncService; aquí solo hay UI.
 // =============================================================================
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:provider/provider.dart';
 
 import '../services/offline_service.dart';
@@ -161,13 +162,13 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
     return ChangeNotifierProvider<SyncService>.value(
       value: SyncService.instance,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: AppColors.of(context).background,
         appBar: AppBar(
           title: const Text('Copias de seguridad'),
           centerTitle: true,
           elevation: 0,
-          backgroundColor: Colors.white,
-          foregroundColor: const Color(0xFF1E293B),
+          backgroundColor: AppColors.of(context).surface,
+          foregroundColor: AppColors.of(context).textPrimary,
         ),
         body: Consumer2<SyncService, OfflineService>(
           builder: (context, s, offline, _) {
@@ -182,11 +183,11 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.of(context).surface,
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: AppColors.of(context).shadow,
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -226,7 +227,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                                   Text(s.lastResult!,
                                       style: TextStyle(
                                           fontSize: 12,
-                                          color: Colors.grey[700])),
+                                          color: AppColors.of(context).textSecondary)),
                               ],
                             ),
                           ),
@@ -276,7 +277,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                       const SizedBox(height: 8),
                       Text(
                         'Sube lo que quedó guardado sin conexión y descarga tus reservas, liquidaciones del último mes y visitas al teléfono.',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        style: TextStyle(fontSize: 12, color: AppColors.of(context).textSecondary),
                       ),
                     ],
                   ),
@@ -288,7 +289,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                 const SizedBox(height: 4),
                 Text(
                   'Se ejecuta aunque la app esté cerrada. Android puede moverla unos minutos para ahorrar batería.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  style: TextStyle(fontSize: 12, color: AppColors.of(context).textSecondary),
                 ),
                 const SizedBox(height: 8),
                 _tarjeta(children: [
@@ -376,7 +377,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                 const SizedBox(height: 6),
                 Text(
                   'La sincronización automática al recuperar conexión y el botón "Sincronizar ahora" siempre usan la red disponible.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  style: TextStyle(fontSize: 12, color: AppColors.of(context).textSecondary),
                 ),
 
                 const SizedBox(height: 24),
@@ -450,9 +451,9 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: Colors.grey[600]),
+          Icon(icon, size: 18, color: AppColors.of(context).textSecondary),
           const SizedBox(width: 8),
-          Text(label, style: TextStyle(color: Colors.grey[700], fontSize: 13)),
+          Text(label, style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 13)),
           const Spacer(),
           Text(value,
               style: TextStyle(
@@ -467,7 +468,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
   Widget _tarjeta({required List<Widget> children}) {
     // Material (no Container) para que los ListTile pinten su fondo/ink.
     return Material(
-      color: Colors.white,
+      color: AppColors.of(context).surface,
       elevation: 1,
       shadowColor: Colors.black.withValues(alpha: 0.15),
       borderRadius: BorderRadius.circular(16),

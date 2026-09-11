@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../widgets/cached_image.dart';
 import '../widgets/foto_viewer.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -121,12 +122,12 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).surface,
       appBar: AppBar(
         title: const Text("Detalle de Visita"),
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.of(context).surface,
+        foregroundColor: AppColors.of(context).textPrimary,
         actions: [
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
@@ -158,7 +159,7 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                       Text(
                         _visita['fecha'] ?? '',
                         style: TextStyle(
-                          color: Colors.grey[600],
+                          color: AppColors.of(context).textSecondary,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -167,15 +168,15 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                   const SizedBox(height: 16),
                   Text(
                     _visita['cliente'] ?? 'Sin cliente',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF1E293B),
+                      color: AppColors.of(context).textPrimary,
                     ),
                   ),
                   Text(
                     _visita['direccion'] ?? 'Ubicación no registrada',
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 14, color: AppColors.of(context).textSecondary),
                   ),
                   const SizedBox(height: 24),
 
@@ -218,9 +219,9 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.grey[50],
+                      color: AppColors.of(context).surfaceVariant,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey[200]!),
+                      border: Border.all(color: AppColors.of(context).surfaceVariant!),
                     ),
                     child: Text(
                       _visita['notas'] ?? 'Sin notas registradas.',
@@ -525,7 +526,7 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                 const SizedBox(height: 6),
                 Text(
                   'Sin comprobante adjunto.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                  style: TextStyle(fontSize: 12, color: AppColors.of(context).textMuted),
                 ),
               ],
             ],
@@ -549,8 +550,8 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
       height: 200,
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.grey[200],
-        border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+        color: AppColors.of(context).surfaceVariant,
+        border: Border(bottom: BorderSide(color: AppColors.of(context).surfaceVariant!)),
       ),
       child: GoogleMap(
         initialCameraPosition: CameraPosition(
@@ -877,10 +878,10 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                   Expanded(
                     child: Text(
                       cliente,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
-                        color: Color(0xFF1E293B),
+                        color: AppColors.of(context).textPrimary,
                       ),
                     ),
                   ),
@@ -909,7 +910,7 @@ class _VisitaDetailScreenState extends State<VisitaDetailScreen> {
                 address,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                style: TextStyle(fontSize: 12, color: AppColors.of(context).textSecondary),
               ),
               if (proyecto != null)
                 Padding(

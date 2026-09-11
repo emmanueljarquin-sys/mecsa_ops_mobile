@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import '../../utils/mensajes_error.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -56,7 +57,7 @@ class _AuditoriasListScreenState extends State<AuditoriasListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: const Text('Auditorías de Vehículos'),
         backgroundColor: _navy,
@@ -105,7 +106,7 @@ class _AuditoriasListScreenState extends State<AuditoriasListScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: Colors.grey.shade200),
+        side: BorderSide(color: AppColors.of(context).surfaceVariant),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -131,9 +132,9 @@ class _AuditoriasListScreenState extends State<AuditoriasListScreen> {
           padding: const EdgeInsets.only(top: 4),
           child: Row(
             children: [
-              Icon(Icons.event, size: 14, color: Colors.grey.shade500),
+              Icon(Icons.event, size: 14, color: AppColors.of(context).textMuted),
               const SizedBox(width: 4),
-              Text(fecha, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+              Text(fecha, style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 13)),
               const SizedBox(width: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -161,16 +162,16 @@ class _AuditoriasListScreenState extends State<AuditoriasListScreen> {
   Widget _emptyView() => ListView(
         children: [
           const SizedBox(height: 120),
-          Icon(Icons.fact_check_outlined, size: 64, color: Colors.grey.shade300),
+          Icon(Icons.fact_check_outlined, size: 64, color: AppColors.of(context).surfaceVariant),
           const SizedBox(height: 16),
           Center(
             child: Text('Sin auditorías todavía',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
+                style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 16)),
           ),
           const SizedBox(height: 6),
           Center(
             child: Text('Tocá "Nueva" para inspeccionar un vehículo',
-                style: TextStyle(color: Colors.grey.shade400, fontSize: 13)),
+                style: TextStyle(color: AppColors.of(context).textMuted, fontSize: 13)),
           ),
         ],
       );

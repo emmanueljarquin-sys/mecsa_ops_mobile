@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import '../../utils/mensajes_error.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -244,7 +245,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: const Text('Nueva auditoría'),
         backgroundColor: _navy,
@@ -277,7 +278,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
   Widget _stepIndicator() {
     const labels = ['Datos', 'Inspección', 'Cierre'];
     return Container(
-      color: Colors.white,
+      color: AppColors.of(context).surface,
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
       child: Row(
         children: List.generate(3, (i) {
@@ -288,12 +289,12 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
               children: [
                 CircleAvatar(
                   radius: 14,
-                  backgroundColor: active || done ? _navy : Colors.grey.shade300,
+                  backgroundColor: active || done ? _navy : AppColors.of(context).surfaceVariant,
                   child: done
                       ? const Icon(Icons.check, size: 15, color: Colors.white)
                       : Text('${i + 1}',
                           style: TextStyle(
-                              color: active ? Colors.white : Colors.grey.shade600,
+                              color: active ? Colors.white : AppColors.of(context).textSecondary,
                               fontSize: 13,
                               fontWeight: FontWeight.bold)),
                 ),
@@ -302,13 +303,13 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
                     style: TextStyle(
                         fontSize: 12,
                         fontWeight: active ? FontWeight.bold : FontWeight.normal,
-                        color: active ? _navy : Colors.grey.shade600)),
+                        color: active ? _navy : AppColors.of(context).textSecondary)),
                 if (i < 2)
                   Expanded(
                     child: Container(
                       height: 2,
                       margin: const EdgeInsets.symmetric(horizontal: 6),
-                      color: done ? _navy : Colors.grey.shade300,
+                      color: done ? _navy : AppColors.of(context).surfaceVariant,
                     ),
                   ),
               ],
@@ -329,7 +330,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
           elevation: 0,
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.grey.shade200)),
+              side: BorderSide(color: AppColors.of(context).surfaceVariant)),
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: DropdownButtonFormField<String>(
@@ -405,7 +406,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
       margin: const EdgeInsets.only(bottom: 14),
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: Colors.grey.shade200)),
+          side: BorderSide(color: AppColors.of(context).surfaceVariant)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -439,7 +440,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
           if (rub.ayuda != null && rub.ayuda!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text(rub.ayuda!, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+              child: Text(rub.ayuda!, style: TextStyle(fontSize: 12, color: AppColors.of(context).textMuted)),
             ),
           const SizedBox(height: 8),
           Row(
@@ -477,9 +478,9 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.of(context).surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: AppColors.of(context).surfaceVariant),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -533,7 +534,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
                       child: GestureDetector(
                         onTap: () => setState(() => fotos.removeAt(e.key)),
                         child: Container(
-                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                          decoration: BoxDecoration(color: AppColors.of(context).textSecondary, shape: BoxShape.circle),
                           child: const Icon(Icons.close, color: Colors.white, size: 15),
                         ),
                       ),
@@ -548,7 +549,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
                 style: const TextStyle(color: _navy, fontSize: 12)),
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              side: BorderSide(color: Colors.grey.shade300),
+              side: BorderSide(color: AppColors.of(context).surfaceVariant),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
@@ -639,7 +640,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
                       child: GestureDetector(
                         onTap: () => setState(() => _fotos.removeAt(e.key)),
                         child: Container(
-                          decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                          decoration: BoxDecoration(color: AppColors.of(context).textSecondary, shape: BoxShape.circle),
                           child: const Icon(Icons.close, color: Colors.white, size: 18),
                         ),
                       ),
@@ -652,9 +653,9 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
                 width: 90,
                 height: 90,
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
+                  color: AppColors.of(context).surfaceVariant,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.grey.shade300),
+                  border: Border.all(color: AppColors.of(context).surfaceVariant),
                 ),
                 child: const Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -671,7 +672,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
         const Divider(height: 28),
         _sectionTitle('Fotos de detalle (con nota)'),
         Text('Para daños o detalles específicos no listados (golpes, rayas, etc.)',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            style: TextStyle(fontSize: 12, color: AppColors.of(context).textMuted)),
         const SizedBox(height: 10),
         ..._detalleFotos.asMap().entries.map((e) => _detalleFotoCard(e.key, e.value)),
         OutlinedButton.icon(
@@ -730,8 +731,8 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, -2))],
+        color: AppColors.of(context).surface,
+        boxShadow: [BoxShadow(color: AppColors.of(context).shadow, blurRadius: 8, offset: const Offset(0, -2))],
       ),
       child: Row(
         children: [
@@ -798,7 +799,7 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade200)),
+          borderRadius: BorderRadius.circular(10), side: BorderSide(color: AppColors.of(context).surfaceVariant)),
       child: ListTile(
         dense: true,
         leading: const Icon(Icons.event, color: _navy),

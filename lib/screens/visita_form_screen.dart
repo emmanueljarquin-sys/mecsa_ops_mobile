@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../utils/mensajes_error.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
@@ -190,8 +191,8 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
         title: Text(widget.visita == null ? "Nueva Visita" : "Editar Visita"),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1E293B),
+        backgroundColor: AppColors.of(context).surface,
+        foregroundColor: AppColors.of(context).textPrimary,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -361,7 +362,7 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
                 child: ElevatedButton(
                   onPressed: provider.isLoading ? null : _save,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -565,9 +566,9 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.grey[100],
+          color: AppColors.of(context).surfaceVariant,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey[300]!),
+          border: Border.all(color: AppColors.of(context).surfaceVariant!),
         ),
         child: const Center(
           child: Text(
@@ -587,9 +588,9 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
         final d = _destinos[index];
         return Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.of(context).surface,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[200]!),
+            border: Border.all(color: AppColors.of(context).surfaceVariant!),
           ),
           child: ListTile(
             dense: true,
@@ -732,9 +733,9 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: Colors.grey[200],
+              color: AppColors.of(context).surfaceVariant,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[300]!),
+              border: Border.all(color: AppColors.of(context).surfaceVariant!),
             ),
             child: const Icon(Icons.add_a_photo_outlined, color: Colors.grey),
           ),
@@ -761,14 +762,14 @@ class _VisitaFormScreenState extends State<VisitaFormScreen> {
     return InputDecoration(
       hintText: hint,
       filled: true,
-      fillColor: Colors.grey[50],
+      fillColor: AppColors.of(context).surfaceVariant,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[200]!),
+        borderSide: BorderSide(color: AppColors.of(context).surfaceVariant!),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[200]!),
+        borderSide: BorderSide(color: AppColors.of(context).surfaceVariant!),
       ),
     );
   }
@@ -823,7 +824,7 @@ class _ProjectSearchModalState extends State<_ProjectSearchModal> {
             height: 4,
             margin: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.grey[300],
+              color: AppColors.of(context).surfaceVariant,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -839,7 +840,7 @@ class _ProjectSearchModalState extends State<_ProjectSearchModal> {
                 borderRadius: BorderRadius.circular(10),
               ),
               filled: true,
-              fillColor: Colors.grey[100],
+              fillColor: AppColors.of(context).surfaceVariant,
             ),
           ),
         ),

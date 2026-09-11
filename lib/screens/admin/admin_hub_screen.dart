@@ -5,6 +5,7 @@
 // muestra según el permiso del rol (rol_permisos), igual que Auditorías.
 // =============================================================================
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_provider.dart';
 import 'aprobar_liquidaciones_screen.dart';
@@ -64,7 +65,7 @@ class AdminHubScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: const Text('Administración'),
         backgroundColor: primary,

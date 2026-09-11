@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../utils/mensajes_error.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -243,7 +244,7 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: const Text('Detalle de Liquidación'),
         backgroundColor: Theme.of(context).primaryColor,
@@ -599,11 +600,11 @@ class _SectionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.of(context).surface,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: AppColors.of(context).shadow,
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -718,7 +719,7 @@ class _FacturaItem extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
+        color: AppColors.of(context).surfaceVariant,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -1013,8 +1014,8 @@ class _FacturaFormSheetState extends State<_FacturaFormSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: AppColors.of(context).surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.all(20),
@@ -1028,7 +1029,7 @@ class _FacturaFormSheetState extends State<_FacturaFormSheet> {
                 Center(
                   child: Container(
                     width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                    decoration: BoxDecoration(color: AppColors.of(context).surfaceVariant, borderRadius: BorderRadius.circular(2)),
                   ),
                 ),
                 Text(widget.existente == null ? 'Agregar factura' : 'Editar factura',

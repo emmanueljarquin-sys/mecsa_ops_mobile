@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import '../../widgets/cached_image.dart';
 import 'package:intl/intl.dart';
 import '../../models/auditoria.dart';
@@ -56,7 +57,7 @@ class _AuditoriaDetailScreenState extends State<AuditoriaDetailScreen> {
         : '${veh['marca'] ?? ''} ${veh['modelo'] ?? ''} · ${veh['placa'] ?? ''}';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F6FA),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: const Text('Detalle de auditoría'),
         backgroundColor: _navy,
@@ -91,7 +92,7 @@ class _AuditoriaDetailScreenState extends State<AuditoriaDetailScreen> {
         children: [
           CircleAvatar(
             radius: 34,
-            backgroundColor: Colors.white,
+            backgroundColor: AppColors.of(context).surface,
             child: Text(
               a.puntaje == null ? '—' : '${a.puntaje!.round()}%',
               style: TextStyle(
@@ -140,7 +141,7 @@ class _AuditoriaDetailScreenState extends State<AuditoriaDetailScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(r[0], style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                      Text(r[0], style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 13)),
                       Text(r[1], style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                     ],
                   ),
@@ -247,7 +248,7 @@ class _AuditoriaDetailScreenState extends State<AuditoriaDetailScreen> {
                           style: TextStyle(
                               fontSize: 13,
                               color: (f.nota == null || f.nota!.isEmpty)
-                                  ? Colors.grey.shade400
+                                  ? AppColors.of(context).textMuted
                                   : Colors.black87),
                         ),
                       ),
@@ -282,7 +283,7 @@ class _AuditoriaDetailScreenState extends State<AuditoriaDetailScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(k, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+            Text(k, style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 13)),
             Text(v, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
           ],
         ),
@@ -296,9 +297,9 @@ class _AuditoriaDetailScreenState extends State<AuditoriaDetailScreen> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.of(context).surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: AppColors.of(context).surfaceVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

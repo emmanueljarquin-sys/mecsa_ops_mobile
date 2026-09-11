@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -262,7 +263,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.of(context).surface,
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: const [
                       BoxShadow(
@@ -300,7 +301,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
                   Container(
                     margin: const EdgeInsets.only(top: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.of(context).surface,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     constraints: const BoxConstraints(maxHeight: 300),

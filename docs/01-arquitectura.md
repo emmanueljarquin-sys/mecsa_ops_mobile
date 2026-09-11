@@ -99,6 +99,10 @@ flowchart TB
     PHP --> FCM
 ```
 
+### Tema claro y oscuro
+
+`AppTheme` ([theme/app_theme.dart](../lib/theme/app_theme.dart)) construye `lightTheme` y `darkTheme` desde una misma función. Los colores que dependen del modo viven en la extensión `AppColors` (`background`, `surface`, `surfaceVariant`, `textPrimary`, `textSecondary`, `textMuted`, `border`, `shadow`) y las pantallas los leen con `AppColors.of(context)` en lugar de valores fijos. En oscuro el primario pasa del slate corporativo a un azul más luminoso (`darkPrimaryColor`) para que botones y acentos se vean sobre fondo oscuro. `ThemeController` ([services/theme_controller.dart](../lib/services/theme_controller.dart)) guarda la preferencia (`theme_mode`: sistema/claro/oscuro) y `MaterialApp.themeMode` la aplica; el selector está en Perfil → Apariencia. Los chips de estado (pendiente/aprobada/rechazada) conservan sus colores propios en ambos modos.
+
 ### Navegación y animaciones
 
 El shell (`HomeScreen`) muestra las 5 pestañas con `AnimatedTabs` ([widgets/animated_tabs.dart](../lib/widgets/animated_tabs.dart)): todas quedan montadas (como `IndexedStack`, sin perder scroll ni formularios) y el cambio hace un deslizamiento corto con desvanecido en la dirección del movimiento. Entre páginas (`Navigator.push`) el tema define `pageTransitionsTheme` con `FadeForwardsPageTransitionsBuilder` en Android y el deslizamiento nativo en iOS. Las fotos de visitas abren en `FotoViewer` ([widgets/foto_viewer.dart](../lib/widgets/foto_viewer.dart)): modal a pantalla completa con zoom, paginación, descarga a la galería y compartir.

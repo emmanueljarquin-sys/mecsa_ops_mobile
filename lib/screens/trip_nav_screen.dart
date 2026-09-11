@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -801,7 +802,7 @@ class _TripNavScreenState extends State<TripNavScreen> {
                       );
                     }
                   },
-                  backgroundColor: Colors.white,
+                  backgroundColor: AppColors.of(context).surface,
                   child: const Icon(Icons.my_location, color: Colors.blue),
                 ),
                 const SizedBox(height: 12),

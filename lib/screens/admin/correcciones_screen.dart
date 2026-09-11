@@ -4,6 +4,7 @@
 // El admin lee el motivo del empleado, escribe una respuesta y marca procesada.
 // =============================================================================
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import '../../utils/mensajes_error.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_provider.dart';
@@ -137,7 +138,7 @@ class _CorreccionesScreenState extends State<CorreccionesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: const Text('Solicitudes de Corrección'),
         backgroundColor: Theme.of(context).primaryColor,

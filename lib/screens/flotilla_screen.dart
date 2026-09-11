@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../widgets/cached_image.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -29,12 +30,12 @@ class FlotillaScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'Flotilla',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF212529),
+                        color: AppColors.of(context).textPrimary,
                       ),
                     ),
                     ElevatedButton.icon(
@@ -71,10 +72,10 @@ class FlotillaScreen extends StatelessWidget {
                 const SizedBox(height: 24),
   
                 // Section: MIS RESERVAS
-                const Text(
+                Text(
                   'MIS RESERVAS',
                   style: TextStyle(
-                    color: Color(0xFF6C757D),
+                    color: AppColors.of(context).textSecondary,
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                     letterSpacing: 1.0,
@@ -88,9 +89,9 @@ class FlotillaScreen extends StatelessWidget {
                     padding: const EdgeInsets.all(16),
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.of(context).surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200),
+                      border: Border.all(color: AppColors.of(context).surfaceVariant),
                     ),
                     child: const Text(
                       "No tienes reservas activas",
@@ -264,9 +265,9 @@ class FlotillaScreen extends StatelessWidget {
                                         const SizedBox(width: 4),
                                         Text(
                                           fechaDisplay,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 13,
-                                            color: Color(0xFF495057),
+                                            color: AppColors.of(context).textSecondary,
                                             fontWeight: FontWeight.w500,
                                           ),
                                         ),
@@ -279,9 +280,9 @@ class FlotillaScreen extends StatelessWidget {
                                         const SizedBox(width: 4),
                                         Text(
                                           horaDisplay,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 13,
-                                            color: Color(0xFF495057),
+                                            color: AppColors.of(context).textSecondary,
                                             fontWeight: FontWeight.w500,
                                           ),
                                         ),
@@ -309,9 +310,9 @@ class FlotillaScreen extends StatelessWidget {
                                                         .toString()
                                                         .split('|')[1]
                                                   : res['ubicacion'],
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                 fontSize: 12,
-                                                color: Colors.black87,
+                                                color: AppColors.of(context).textPrimary,
                                                 fontWeight: FontWeight.w500,
                                               ),
                                               maxLines: 1,
@@ -334,10 +335,10 @@ class FlotillaScreen extends StatelessWidget {
                 const SizedBox(height: 32),
   
                 // Section: VEHÍCULOS DISPONIBLES
-                const Text(
+                Text(
                   'VEHÍCULOS DISPONIBLES',
                   style: TextStyle(
-                    color: Color(0xFF6C757D),
+                    color: AppColors.of(context).textSecondary,
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
                     letterSpacing: 1.0,

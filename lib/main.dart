@@ -14,6 +14,7 @@ import 'services/app_logger.dart';
 import 'services/connectivity_service.dart';
 import 'services/offline_service.dart';
 import 'services/sync_service.dart';
+import 'services/theme_controller.dart';
 import 'package:workmanager/workmanager.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -119,6 +120,8 @@ void main() async {
     print('$st');
   }
 
+  await ThemeController.instance.cargar();
+
   runApp(MecsaOpsApp(firebaseAvailable: firebaseAvailable));
 }
 
@@ -142,11 +145,17 @@ class MecsaOpsApp extends StatelessWidget {
         ChangeNotifierProvider<SyncService>.value(
           value: SyncService.instance,
         ),
+        ChangeNotifierProvider<ThemeController>.value(
+          value: ThemeController.instance,
+        ),
       ],
-      child: MaterialApp(
+      child: Consumer<ThemeController>(
+        builder: (context, themeCtrl, child) => MaterialApp(
         title: 'MecsaOPS Mobile',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: themeCtrl.mode,
         home: Consumer<AppProvider>(
           builder: (context, provider, _) {
             // If user is logged in, show Home, else Login
@@ -155,6 +164,7 @@ class MecsaOpsApp extends StatelessWidget {
             }
             return const LoginScreen();
           },
+        ),
         ),
       ),
     );

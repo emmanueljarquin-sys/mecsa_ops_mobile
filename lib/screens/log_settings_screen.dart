@@ -6,6 +6,7 @@
 // Se llega desde Perfil > Registro de actividad > Configurar.
 // =============================================================================
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 import '../services/app_logger.dart';
 import '../services/local_db.dart';
@@ -141,10 +142,10 @@ class _LogSettingsScreenState extends State<LogSettingsScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(16),
                 children: [
-                  const Text(
+                  Text(
                     'NIVELES A REGISTRAR',
                     style: TextStyle(
-                      color: Color(0xFF6C757D),
+                      color: AppColors.of(context).textSecondary,
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                       letterSpacing: 1.0,
@@ -155,7 +156,7 @@ class _LogSettingsScreenState extends State<LogSettingsScreen> {
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: Colors.grey.shade200),
+                      side: BorderSide(color: AppColors.of(context).surfaceVariant),
                     ),
                     child: Column(
                       children: [
@@ -178,10 +179,10 @@ class _LogSettingsScreenState extends State<LogSettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const Text(
+                  Text(
                     'RETENCIÓN',
                     style: TextStyle(
-                      color: Color(0xFF6C757D),
+                      color: AppColors.of(context).textSecondary,
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                       letterSpacing: 1.0,
@@ -192,7 +193,7 @@ class _LogSettingsScreenState extends State<LogSettingsScreen> {
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: Colors.grey.shade200),
+                      side: BorderSide(color: AppColors.of(context).surfaceVariant),
                     ),
                     child: ListTile(
                       leading: const Icon(Icons.history, color: Colors.blue),
@@ -217,10 +218,10 @@ class _LogSettingsScreenState extends State<LogSettingsScreen> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  const Text(
+                  Text(
                     'ALMACENAMIENTO',
                     style: TextStyle(
-                      color: Color(0xFF6C757D),
+                      color: AppColors.of(context).textSecondary,
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                       letterSpacing: 1.0,
@@ -231,7 +232,7 @@ class _LogSettingsScreenState extends State<LogSettingsScreen> {
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: Colors.grey.shade200),
+                      side: BorderSide(color: AppColors.of(context).surfaceVariant),
                     ),
                     child: Column(
                       children: [
@@ -256,7 +257,7 @@ class _LogSettingsScreenState extends State<LogSettingsScreen> {
                   Text(
                     'El registro se guarda solo en este teléfono. No se envía a ningún servidor. '
                     'Para compartirlo con TI, usá "Ver registro" y el botón de compartir.',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 12),
                   ),
                 ],
               ),

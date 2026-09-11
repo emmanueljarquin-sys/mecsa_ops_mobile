@@ -3,6 +3,7 @@
 // Pantalla admin: reservas de vehículo pendientes → aprobar/rechazar.
 // =============================================================================
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import '../../utils/mensajes_error.dart';
 import '../../services/admin_service.dart';
 
@@ -148,7 +149,7 @@ class _AprobarReservasScreenState extends State<AprobarReservasScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: const Text('Aprobar Reservas'),
         backgroundColor: Theme.of(context).primaryColor,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../widgets/cached_image.dart';
 import '../widgets/animated_tabs.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -184,9 +185,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         backgroundColor: const Color(0xFFEFF6FF),
         padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
         leading: const Icon(Icons.check_circle, color: Color(0xFF1D4ED8), size: 28),
-        content: const Text(
+        content: Text(
           '¡Tu pago de kilometraje fue confirmado! Ver comprobante en tu visita.',
-          style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+          style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.of(context).textPrimary),
         ),
         actions: [
           TextButton(
@@ -277,7 +278,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Bloqueo total si la actualización es forzosa
     if (provider.forceUpdate && provider.updateUrl != null) {
       return Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.of(context).surface,
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(32.0),
@@ -286,15 +287,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               children: [
                 const Icon(Icons.system_update_alt, size: 80, color: Colors.blue),
                 const SizedBox(height: 24),
-                const Text(
+                Text(
                   "Actualización Requerida",
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.of(context).textPrimary),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 Text(
                   provider.notificationMessage ?? "Debes actualizar a la última versión para continuar.",
-                  style: const TextStyle(fontSize: 16, color: Colors.black54),
+                  style: TextStyle(fontSize: 16, color: AppColors.of(context).textSecondary),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 40),
@@ -431,12 +432,12 @@ class DashboardTab extends StatelessWidget {
                   height: 40,
                 ),
                 const SizedBox(width: 12),
-                const Text(
+                Text(
                   "MecsaOPS",
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 20,
-                    color: Color(0xFF212529),
+                    color: AppColors.of(context).textPrimary,
                   ),
                 ),
                 const Spacer(),
@@ -494,7 +495,7 @@ class DashboardTab extends StatelessWidget {
                         children: [
                           CircleAvatar(
                             radius: 16,
-                            backgroundColor: Colors.grey[200],
+                            backgroundColor: AppColors.of(context).surfaceVariant,
                             child: const Icon(
                               Icons.person,
                               size: 20,
@@ -544,7 +545,7 @@ class DashboardTab extends StatelessWidget {
                   ],
                   child: CircleAvatar(
                     radius: 18,
-                    backgroundColor: Colors.grey[200],
+                    backgroundColor: AppColors.of(context).surfaceVariant,
                     backgroundImage: emp?['photo'] != null
                         ? NetworkImage(() {
                             final raw = emp!['photo'];
@@ -567,16 +568,16 @@ class DashboardTab extends StatelessWidget {
             // 2. Greeting
             Text(
               "Hola, $fullName",
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 26,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF212529),
+                color: AppColors.of(context).textPrimary,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               "Aquí tienes tu resumen de operaciones.",
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              style: TextStyle(fontSize: 16, color: AppColors.of(context).textSecondary),
             ),
   
             const SizedBox(height: 24),
@@ -623,7 +624,7 @@ class DashboardTab extends StatelessWidget {
                   child: _MainActionButton(
                     icon: Icons.location_on,
                     label: "Registrar Visita",
-                    color: Theme.of(context).primaryColor,
+                    color: Theme.of(context).colorScheme.primary,
                     textColor: Colors.white,
                     onTap: () {
                       // Nav to Visitas or Form
@@ -636,9 +637,9 @@ class DashboardTab extends StatelessWidget {
                   child: _MainActionButton(
                     icon: Icons.camera_alt_outlined,
                     label: "Subir Factura",
-                    color: Colors.white,
-                    textColor: const Color(0xFF212529),
-                    borderColor: Colors.grey[200],
+                    color: AppColors.of(context).surface,
+                    textColor: AppColors.of(context).textPrimary,
+                    borderColor: AppColors.of(context).surfaceVariant,
                     onTap: () {
                       // Nav to Viaticos
                       provider.setIndex(2);
@@ -657,9 +658,9 @@ class DashboardTab extends StatelessWidget {
                     child: _MainActionButton(
                       icon: Icons.fact_check_outlined,
                       label: "Auditoría de Vehículo",
-                      color: Colors.white,
-                      textColor: const Color(0xFF212529),
-                      borderColor: Colors.grey[200],
+                      color: AppColors.of(context).surface,
+                      textColor: AppColors.of(context).textPrimary,
+                      borderColor: AppColors.of(context).surfaceVariant,
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -751,7 +752,7 @@ class DashboardTab extends StatelessWidget {
                       child: Container(
                         width: 70,
                         height: 70,
-                        color: Colors.grey[300],
+                        color: AppColors.of(context).surfaceVariant,
                         child: nextReservation['vehiculos'] != null &&
                                 nextReservation['vehiculos']['foto'] != null
                             ? Builder(builder: (ctx) {
@@ -865,7 +866,7 @@ class DashboardTab extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 30,
-                    backgroundColor: Colors.grey[200],
+                    backgroundColor: AppColors.of(context).surfaceVariant,
                     backgroundImage: emp?['photo'] != null
                         ? NetworkImage(() {
                             final raw = emp!['photo'];
@@ -895,7 +896,7 @@ class DashboardTab extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           provider.getDepartmentName(emp?['departamento']),
-                          style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                          style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 13),
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 8),
@@ -975,7 +976,7 @@ class _MainActionButton extends StatelessWidget {
           border: borderColor != null ? Border.all(color: borderColor!) : null,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: AppColors.of(context).shadow,
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -987,7 +988,7 @@ class _MainActionButton extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(
+                color: AppColors.of(context).surface.withOpacity(
                   0.2,
                 ), // Subtle overlay for icon bg
                 shape: BoxShape.circle,
@@ -1030,11 +1031,11 @@ class _DashboardCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.of(context).surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: AppColors.of(context).shadow,
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -1054,10 +1055,10 @@ class _DashboardCard extends StatelessWidget {
                   ],
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF495057),
+                      color: AppColors.of(context).textSecondary,
                     ),
                   ),
                 ],

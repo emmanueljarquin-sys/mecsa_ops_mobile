@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/mfa_service.dart';
 import 'home_screen.dart';
@@ -62,7 +63,7 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
   Widget build(BuildContext context) {
     final email = Supabase.instance.client.auth.currentUser?.email ?? '';
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.of(context).background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -72,11 +73,11 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
               child: Container(
                 padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.of(context).surface,
                   borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
+                      color: AppColors.of(context).shadow,
                       blurRadius: 30,
                       offset: const Offset(0, 10),
                     )
@@ -108,8 +109,8 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
                       _useBackup
                           ? "Ingresa un código de respaldo"
                           : "Ingresa el código de tu app autenticadora",
-                      style: const TextStyle(
-                          color: Colors.black54, fontSize: 13),
+                      style: TextStyle(
+                          color: AppColors.of(context).textSecondary, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 4),
@@ -194,9 +195,9 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
                         if (!mounted) return;
                         Navigator.of(context).pop();
                       },
-                      child: const Text(
+                      child: Text(
                         "Cerrar sesión",
-                        style: TextStyle(fontSize: 12, color: Colors.black54),
+                        style: TextStyle(fontSize: 12, color: AppColors.of(context).textSecondary),
                       ),
                     ),
                   ],

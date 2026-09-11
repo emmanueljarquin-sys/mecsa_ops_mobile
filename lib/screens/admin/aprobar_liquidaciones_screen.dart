@@ -4,6 +4,7 @@
 // aprobar/rechazar. Reusa AdminService.
 // =============================================================================
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import '../../utils/mensajes_error.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_provider.dart';
@@ -134,7 +135,7 @@ class _AprobarLiquidacionesScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: const Text('Aprobar Liquidaciones'),
         backgroundColor: Theme.of(context).primaryColor,

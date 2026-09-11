@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../widgets/cached_image.dart';
 import '../utils/mensajes_error.dart';
 import 'package:geolocator/geolocator.dart';
@@ -446,7 +447,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
               actions: [
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
                   ),
                   child: const Text('Ver Mis Visitas',
                       style: TextStyle(color: Colors.white)),
@@ -507,7 +508,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
               actions: [
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -567,7 +568,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: Text(_paso == 1
             ? 'Iniciar Visita'
@@ -616,7 +617,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.of(context).surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) {
@@ -698,7 +699,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
                 height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () async {
@@ -748,9 +749,9 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
           _card(
             child: Row(
               children: [
-                const CircleAvatar(
-                  backgroundColor: Color(0xFF1E293B),
-                  child: Icon(Icons.person, color: Colors.white),
+                CircleAvatar(
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  child: const Icon(Icons.person, color: Colors.white),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -849,7 +850,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
               const SizedBox(width: 8),
               Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
+                  color: AppColors.of(context).textPrimary,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: IconButton(
@@ -1224,14 +1225,14 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
         Expanded(
           child: Container(
             height: 3,
-            color: activo >= 2 ? Colors.green : Colors.grey.shade300,
+            color: activo >= 2 ? Colors.green : AppColors.of(context).surfaceVariant,
           ),
         ),
         _stepCircle(2, 'Ruta', activo),
         Expanded(
           child: Container(
             height: 3,
-            color: activo >= 3 ? Colors.green : Colors.grey.shade300,
+            color: activo >= 3 ? Colors.green : AppColors.of(context).surfaceVariant,
           ),
         ),
         _stepCircle(3, 'Final', activo),
@@ -1250,7 +1251,7 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
               ? Colors.green
               : active
                   ? const Color(0xFF1E293B)
-                  : Colors.grey.shade300,
+                  : AppColors.of(context).surfaceVariant,
           child: done
               ? const Icon(Icons.check, color: Colors.white, size: 16)
               : Text('$num',
@@ -1272,11 +1273,11 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.of(context).surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: AppColors.of(context).shadow,
             blurRadius: 8,
             offset: const Offset(0, 2),
           )
@@ -1397,16 +1398,16 @@ class _VisitaInicioScreenState extends State<VisitaInicioScreen> {
     return InputDecoration(
       hintText: hint,
       filled: true,
-      fillColor: Colors.grey.shade50,
+      fillColor: AppColors.of(context).surfaceVariant,
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade200),
+        borderSide: BorderSide(color: AppColors.of(context).surfaceVariant),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey.shade200),
+        borderSide: BorderSide(color: AppColors.of(context).surfaceVariant),
       ),
     );
   }

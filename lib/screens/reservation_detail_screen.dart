@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../widgets/cached_image.dart';
 import '../utils/mensajes_error.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -58,7 +59,7 @@ class ReservationDetailScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: const Text('Detalles de Reserva'),
         backgroundColor: const Color(0xFF0F172A),
@@ -75,7 +76,7 @@ class ReservationDetailScreen extends StatelessWidget {
                 Container(
                   height: 220,
                   width: double.infinity,
-                  decoration: BoxDecoration(color: Colors.grey[200]),
+                  decoration: BoxDecoration(color: AppColors.of(context).surfaceVariant),
                   child: imageUrl != null
                       ? CachedImage(
                           imageUrl,
@@ -209,9 +210,9 @@ class ReservationDetailScreen extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.of(context).surface,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade200),
+                        border: Border.all(color: AppColors.of(context).surfaceVariant),
                       ),
                       child: Row(
                         children: [
@@ -228,9 +229,9 @@ class ReservationDetailScreen extends StatelessWidget {
                                     )[1]
                                   : (reservation['ubicacion'] ??
                                         "Sin ubicación"),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
-                                color: Colors.black87,
+                                color: AppColors.of(context).textPrimary,
                               ),
                             ),
                           ),
@@ -247,16 +248,16 @@ class ReservationDetailScreen extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.of(context).surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200),
+                      border: Border.all(color: AppColors.of(context).surfaceVariant),
                     ),
                     child: Text(
                       reservation['motivo'] ?? "No especificado",
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         height: 1.5,
-                        color: Colors.black87,
+                        color: AppColors.of(context).textPrimary,
                       ),
                     ),
                   ),
@@ -990,8 +991,8 @@ class ReservationDetailScreen extends StatelessWidget {
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
-      style: const TextStyle(
-        color: Color(0xFF6C757D),
+      style: TextStyle(
+        color: AppColors.light.textSecondary,
         fontWeight: FontWeight.bold,
         fontSize: 12,
         letterSpacing: 1.2,

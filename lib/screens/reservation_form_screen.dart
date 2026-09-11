@@ -47,7 +47,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Nueva Reserva'),
-        backgroundColor: AppTheme.primaryColor,
+        backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
@@ -66,9 +66,9 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: ListTile(
-                    leading: const Icon(
+                    leading: Icon(
                       Icons.directions_car,
-                      color: AppTheme.primaryColor,
+                      color: Theme.of(context).colorScheme.primary,
                       size: 32,
                     ),
                     title: Text(
@@ -87,7 +87,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                     ),
                     prefixIcon: const Icon(Icons.directions_car),
                     filled: true,
-                    fillColor: Colors.grey[50],
+                    fillColor: AppColors.of(context).surfaceVariant,
                   ),
                   items: vehiculos
                       .where((v) => v['status'] == 'available') // SOLAMENTE disponibles
@@ -107,12 +107,12 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
               ],
 
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 "Fechas",
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  color: AppColors.of(context).textPrimary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -140,12 +140,12 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
               ),
 
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 "Detalles",
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black87,
+                  color: AppColors.of(context).textPrimary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -159,7 +159,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[50],
+                  fillColor: AppColors.of(context).surfaceVariant,
                 ),
                 maxLines: 2,
                 validator: (value) =>
@@ -179,7 +179,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[50],
+                  fillColor: AppColors.of(context).surfaceVariant,
                   suffixIcon: const Icon(Icons.arrow_drop_down),
                 ),
                 onTap: () {
@@ -230,7 +230,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                           color: Colors.grey,
                         ),
                   filled: true,
-                  fillColor: Colors.grey[50],
+                  fillColor: AppColors.of(context).surfaceVariant,
                 ),
               ),
               if (_ubicacionController.text.isNotEmpty)
@@ -270,7 +270,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[50],
+                  fillColor: AppColors.of(context).surfaceVariant,
                   prefixIcon: const Icon(
                     Icons.people_outline,
                     color: Colors.orange,
@@ -314,7 +314,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                 height: 50,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
+                    backgroundColor: Theme.of(context).colorScheme.primary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -453,7 +453,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
         decoration: BoxDecoration(
           border: Border.all(color: Colors.grey),
           borderRadius: BorderRadius.circular(8),
-          color: Colors.grey[50],
+          color: AppColors.of(context).surfaceVariant,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -465,10 +465,10 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.calendar_today,
                   size: 16,
-                  color: AppTheme.primaryColor,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -607,7 +607,7 @@ class _ProjectSearchModalState extends State<_ProjectSearchModal> {
             height: 4,
             margin: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.grey[300],
+              color: AppColors.of(context).surfaceVariant,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -624,7 +624,7 @@ class _ProjectSearchModalState extends State<_ProjectSearchModal> {
                 borderRadius: BorderRadius.circular(10),
               ),
               filled: true,
-              fillColor: Colors.grey[100],
+              fillColor: AppColors.of(context).surfaceVariant,
             ),
           ),
         ),
@@ -719,7 +719,7 @@ class _EmployeeMultiSelectModalState extends State<_EmployeeMultiSelectModal> {
                   Navigator.pop(context);
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                 ),
@@ -740,7 +740,7 @@ class _EmployeeMultiSelectModalState extends State<_EmployeeMultiSelectModal> {
                 borderRadius: BorderRadius.circular(10),
               ),
               filled: true,
-              fillColor: Colors.grey[100],
+              fillColor: AppColors.of(context).surfaceVariant,
             ),
           ),
         ),
@@ -797,7 +797,7 @@ class _EmployeeMultiSelectModalState extends State<_EmployeeMultiSelectModal> {
                     }
                   });
                 },
-                activeColor: AppTheme.primaryColor,
+                activeColor: Theme.of(context).colorScheme.primary,
               );
             },
           ),

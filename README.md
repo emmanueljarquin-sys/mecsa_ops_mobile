@@ -17,9 +17,9 @@ Flotilla · Viáticos · Visitas · Auditorías · Administración
 
 <br/>
 
-| 📴 **Funciona sin conexión** | 🔄 **Sincroniza sola** | 🗂️ **Copia de seguridad** | 📄 **Exporta PDF** |
-|:---:|:---:|:---:|:---:|
-| Registros, liquidaciones y visitas se guardan en el teléfono y se suben al volver la red. Las fotos ya sincronizadas se ven sin red | Al recuperar internet, cada 45 s con pendientes y en la copia programada | Diaria, semanal o mensual, solo WiFi o con datos | Rutas, liquidaciones con comprobantes y visitas con fotos, listos para compartir |
+| 📴 **Funciona sin conexión** | 🔄 **Sincroniza sola** | 🗂️ **Copia de seguridad** | 📄 **Exporta PDF** | 🌙 **Modo oscuro** |
+|:---:|:---:|:---:|:---:|:---:|
+| Registros, liquidaciones y visitas se guardan en el teléfono y se suben al volver la red. Las fotos ya sincronizadas se ven sin red | Al recuperar internet, cada 45 s con pendientes y en la copia programada | Diaria, semanal o mensual, solo WiFi o con datos | Rutas, liquidaciones con comprobantes y visitas con fotos, listos para compartir | Claro, oscuro o según el sistema, desde Perfil → Apariencia |
 
 </div>
 
@@ -93,6 +93,7 @@ mindmap
       Sincroniza sola
       Copia programada
     Perfil
+      Apariencia: claro / oscuro
       Copias de seguridad
       Registro de actividad
       Voz del GPS
@@ -373,6 +374,7 @@ lib/
 │   ├── liquidaciones_service.dart   Liquidaciones y facturas (con caché de personal y proyectos).
 │   ├── ruta_pdf_service.dart · liquidacion_pdf_service.dart · visita_pdf_service.dart
 │   ├── admin_service.dart · auditoria_service.dart · mfa_service.dart
+│   ├── theme_controller.dart        Modo claro / oscuro / sistema (preferencia persistida).
 │   ├── tracking_service.dart        Stream GPS → visitas.ops_tracking.
 │   └── app_logger.dart              Registro de actividad (app_log).
 ├── models/                          reservation, liquidacion, auditoria
@@ -388,7 +390,7 @@ lib/
 │   ├── admin/
 │   └── profile_screen.dart
 ├── widgets/                         connection_banner, offline_notice, cached_image, foto_viewer, animated_tabs, correccion_widgets
-├── theme/
+├── theme/app_theme.dart             Temas claro y oscuro + AppColors (colores semánticos por modo)
 └── utils/                           mensajes_error (errores legibles), num_parse
 ```
 

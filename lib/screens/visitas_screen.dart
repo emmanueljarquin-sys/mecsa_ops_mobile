@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import 'visita_inicio_screen.dart';
@@ -39,7 +40,7 @@ class _VisitasScreenState extends State<VisitasScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.of(context).background,
       body: SafeArea(
         child: Column(
           children: [
@@ -114,12 +115,12 @@ class _VisitasScreenState extends State<VisitasScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Visitas',
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF1E293B),
+                  color: AppColors.of(context).textPrimary,
                 ),
               ),
               Text(
@@ -214,7 +215,7 @@ class _VisitasScreenState extends State<VisitasScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.map_outlined, size: 80, color: Colors.grey[300]),
+          Icon(Icons.map_outlined, size: 80, color: AppColors.of(context).surfaceVariant),
           const SizedBox(height: 16),
           const Text(
             "No tienes visitas registradas",
@@ -223,7 +224,7 @@ class _VisitasScreenState extends State<VisitasScreen> {
           const SizedBox(height: 8),
           Text(
             "Toca el botón + para agendar una",
-            style: TextStyle(color: Colors.grey[400], fontSize: 13),
+            style: TextStyle(color: AppColors.of(context).textMuted, fontSize: 13),
           ),
         ],
       ),
@@ -284,10 +285,10 @@ class _VisitaCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       visita['cliente'] ?? 'Sin cliente',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 17,
-                        color: Color(0xFF1E293B),
+                        color: AppColors.of(context).textPrimary,
                       ),
                     ),
                   ),
@@ -315,7 +316,7 @@ class _VisitaCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       visita['direccion'] ?? 'Ubicación pendiente',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                      style: TextStyle(color: AppColors.of(context).textSecondary, fontSize: 14),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),

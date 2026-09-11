@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import '../utils/mensajes_error.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -78,8 +79,8 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
         builder: (context, setModalState) {
           return Container(
             height: MediaQuery.of(context).size.height * 0.85,
-            decoration: const BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(
+              color: AppColors.of(context).surface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
             child: Column(
@@ -123,7 +124,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       filled: true,
-                      fillColor: Colors.grey[100],
+                      fillColor: AppColors.of(context).surfaceVariant,
                     ),
                     onChanged: (val) {
                       setModalState(() {
@@ -206,8 +207,8 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
         builder: (context, setModalState) {
           return Container(
             height: MediaQuery.of(context).size.height * 0.85,
-            decoration: const BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(
+              color: AppColors.of(context).surface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
             child: Column(
@@ -251,7 +252,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       filled: true,
-                      fillColor: Colors.grey[100],
+                      fillColor: AppColors.of(context).surfaceVariant,
                     ),
                     onChanged: (val) {
                       setModalState(() {
@@ -352,8 +353,8 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
 
           return Container(
             height: MediaQuery.of(context).size.height * 0.85,
-            decoration: const BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(
+              color: AppColors.of(context).surface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
             child: Column(
@@ -369,7 +370,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       filled: true,
-                      fillColor: Colors.grey[100],
+                      fillColor: AppColors.of(context).surfaceVariant,
                     ),
                     onChanged: (val) => setModalState(() => localQuery = val),
                   ),
@@ -727,7 +728,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppColors.of(context).background,
       appBar: AppBar(
         title: Text(
           widget.liquidacion == null
@@ -772,7 +773,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                                         labelText: 'Empleado *',
                                         border: const OutlineInputBorder(),
                                         filled: widget.liquidacion == null,
-                                        fillColor: Colors.grey[200],
+                                        fillColor: AppColors.of(context).surfaceVariant,
                                         errorText: state.errorText,
                                         suffixIcon: widget.liquidacion == null
                                             ? null
@@ -782,7 +783,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                                         _selectedEmpleadoLabel,
                                         style: TextStyle(
                                           color: _selectedEmpleadoId == null
-                                              ? Colors.grey[600]
+                                              ? AppColors.of(context).textSecondary
                                               : Colors.black,
                                           fontSize: 16,
                                         ),
@@ -817,7 +818,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                                         _selectedProyectoLabel,
                                         style: TextStyle(
                                           color: _selectedProyectoId == null
-                                              ? Colors.grey[600]
+                                              ? AppColors.of(context).textSecondary
                                               : Colors.black,
                                           fontSize: 16,
                                         ),
@@ -944,7 +945,7 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                                         .join(', '),
                                 style: TextStyle(
                                   color: _selectedPersonal.isEmpty
-                                      ? Colors.grey[600]
+                                      ? AppColors.of(context).textSecondary
                                       : Colors.black,
                                   fontSize: 14,
                                 ),
@@ -1090,11 +1091,11 @@ class _SectionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.of(context).surface,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: AppColors.of(context).shadow,
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -1131,7 +1132,7 @@ class _FacturaListItem extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
+        color: AppColors.of(context).surfaceVariant,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -1289,7 +1290,7 @@ class _FacturaDialogState extends State<_FacturaDialog> {
                               fit: BoxFit.cover,
                               errorBuilder: (ctx, err, stack) => Container(
                                 height: 150,
-                                color: Colors.grey[200],
+                                color: AppColors.of(context).surfaceVariant,
                                 child: const Center(
                                   child: Icon(
                                     Icons.broken_image,

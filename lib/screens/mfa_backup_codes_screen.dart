@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'home_screen.dart';
 
@@ -26,7 +27,7 @@ class _MfaBackupCodesScreenState extends State<MfaBackupCodesScreen> {
     return WillPopScope(
       onWillPop: () async => _confirmado,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: AppColors.of(context).background,
         appBar: AppBar(
           title: const Text("Códigos de respaldo"),
           backgroundColor: const Color(0xFF013483),

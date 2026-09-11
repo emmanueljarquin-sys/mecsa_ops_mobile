@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
@@ -548,7 +549,7 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
         suffixText: suffix,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         filled: !enabled,
-        fillColor: !enabled ? Colors.grey.shade100 : null,
+        fillColor: !enabled ? AppColors.of(context).surfaceVariant : null,
       ),
       validator: (v) => (v == null || v.trim().isEmpty) ? "Requerido" : (!isNum(v) ? "Número inválido" : null),
     );
@@ -660,9 +661,9 @@ class _VehicleRegisterScreenState extends State<VehicleRegisterScreen> {
         height: 120,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: Colors.grey[200],
+          color: AppColors.of(context).surfaceVariant,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(color: AppColors.of(context).surfaceVariant),
         ),
         child: photo != null
             ? ClipRRect(

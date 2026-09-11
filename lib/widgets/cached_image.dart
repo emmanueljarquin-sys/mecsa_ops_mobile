@@ -12,6 +12,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 import '../services/imagenes_cache.dart';
 
@@ -67,7 +68,7 @@ class _CachedImageState extends State<CachedImage> {
   Widget _box(Widget child) => Container(
         width: widget.width,
         height: widget.height,
-        color: widget.backgroundColor ?? Colors.grey[200],
+        color: widget.backgroundColor ?? AppColors.of(context).surfaceVariant,
         alignment: Alignment.center,
         child: child,
       );
