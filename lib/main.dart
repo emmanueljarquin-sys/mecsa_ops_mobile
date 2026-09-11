@@ -11,9 +11,14 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'theme/app_theme.dart';
 import 'providers/app_provider.dart';
 import 'services/app_logger.dart';
+import 'services/connectivity_service.dart';
 import 'services/offline_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
+
+const String kSupabaseUrl = 'https://awhuzekjpoapamijlvua.supabase.co';
+const String kSupabaseAnonKey =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3aHV6ZWtqcG9hcGFtaWpsdnVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1NzM2ODMsImV4cCI6MjA3NzE0OTY4M30.2wnEN8HG2LA3CRhDbHQdu7drrsF7-G7zg-CCt7rqkeQ';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -52,11 +57,13 @@ void main() async {
     return false; // dejar que el manejo por defecto continúe
   };
 
-  await Supabase.initialize(
-    url: 'https://awhuzekjpoapamijlvua.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3aHV6ZWtqcG9hcGFtaWpsdnVhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1NzM2ODMsImV4cCI6MjA3NzE0OTY4M30.2wnEN8HG2LA3CRhDbHQdu7drrsF7-G7zg-CCt7rqkeQ',
-  );
+  await Supabase.initialize(url: kSupabaseUrl, anonKey: kSupabaseAnonKey);
+
+  // Estado de conexión con verificación de internet real (sondeo al backend).
+  // No bloquear el arranque: el sondeo inicial corre en segundo plano.
+  ConnectivityService.instance
+      .init(probeUrl: '$kSupabaseUrl/rest/v1/', headers: {'apikey': kSupabaseAnonKey})
+      .catchError((e) => log.w('conectividad', 'init falló', error: e));
 
   bool firebaseAvailable = false;
   try {
@@ -92,6 +99,9 @@ class MecsaOpsApp extends StatelessWidget {
         ),
         ChangeNotifierProvider<OfflineService>.value(
           value: OfflineService.instance,
+        ),
+        ChangeNotifierProvider<ConnectivityService>.value(
+          value: ConnectivityService.instance,
         ),
       ],
       child: MaterialApp(

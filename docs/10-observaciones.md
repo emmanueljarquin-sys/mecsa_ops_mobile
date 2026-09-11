@@ -43,8 +43,8 @@ Hallazgos encontrados al leer el código para escribir esta documentación. No s
 
 | # | Hallazgo | Dónde |
 |---|----------|-------|
-| C1 | No hay verificación de conectividad al arrancar. `check_version.php` y `fetchData` no tienen timeout; en Wi-Fi cautivo pueden colgarse | `app_provider.dart:224-251, 519-558` |
-| C2 | `hayConexion()` devuelve `true` ante error. Es optimista por diseño, pero significa que "sin conexión" solo se detecta cuando el upload real falla | `offline_service.dart:60-66` |
+| C1 | ~~No hay verificación de conectividad al arrancar. `fetchData` no tiene timeout; en Wi-Fi cautivo puede colgarse~~ **Resuelto**: timeout de 20 s por consulta, caché de lectura, `loadError` + `ConnectionBanner`. `check_version.php` sigue sin timeout (no bloquea la UI) | `app_provider.dart` (`fetchData`, `_consulta`), `widgets/connection_banner.dart` |
+| C2 | ~~`hayConexion()` solo consulta si hay red~~ **Resuelto**: delega en `ConnectivityService.checkInternet()` (sondeo HTTP con timeout 4 s). Sigue devolviendo `true` si el propio sondeo lanza una excepción inesperada | `offline_service.dart`, `services/connectivity_service.dart` |
 | C3 | La cola offline no tiene backoff ni límite de reintentos. Una operación que siempre falla se reintenta en cada flush indefinidamente | `offline_service.dart:144-168` |
 | C4 | `fcm_v1_helper.php` pide un token OAuth nuevo por cada push y nadie verifica la respuesta de FCM | `MecsaOPS/api/fcm_v1_helper.php` |
 

@@ -2,7 +2,27 @@
 
 Fuente: [offline_service.dart](../lib/services/offline_service.dart).
 
-La app **no tiene caché de lectura**. Sin conexión no se pueden ver reservas, liquidaciones ni visitas que no estén ya en memoria. Lo que sí existe es una **cola de escritura** que guarda operaciones en el teléfono y las sube cuando vuelve la red.
+Hay dos piezas: una **caché de lectura** en SQLite (tabla `cache`, ver [cache_service.dart](../lib/services/cache_service.dart)) que guarda lo último que se vio de vehículos, reservas, viáticos, visitas, proyectos, empleados, departamentos, empresas, vehículos personales y el perfil del empleado con sus permisos; y una **cola de escritura** que guarda operaciones en el teléfono y las sube cuando vuelve la red.
+
+## 8.0 Caché de lectura y banner de conexión
+
+```mermaid
+flowchart TD
+    Start["Arranque con sesión"] --> C["_loadFromCache()<br/>SQLite → listas en memoria<br/>(instantáneo, sin red)"]
+    C --> F["fetchData()<br/>cada consulta con timeout 20 s"]
+    F -->|"OK"| Put["cache.put() por consulta<br/>lastSyncAt = ahora<br/>loadError = null"]
+    F -->|"falla parcial<br/>(consultas que no relanzan)"| P["se mantienen datos previos<br/>loadError = 'No se pudieron actualizar: ...'"]
+    F -->|"falla total<br/>(vehículos, viáticos, timeout, red)"| E["loadError = mensaje entendible<br/>datos de caché siguen en pantalla"]
+    P --> Probe["ConnectivityService.checkInternet(force)"]
+    E --> Probe
+    Probe --> Banner["ConnectionBanner (HomeScreen, todas las pestañas)"]
+    Banner -->|"sin internet"| B1["naranja: Sin conexión.<br/>Mostrando datos guardados hoy a las HH:MM"]
+    Banner -->|"con internet pero falló"| B2["rojo: No se pudieron cargar los datos<br/>(tocar → detalle) + REINTENTAR"]
+```
+
+- La caché se separa por usuario (`email:clave`) y se borra al cerrar sesión.
+- `ConnectivityService` ([connectivity_service.dart](../lib/services/connectivity_service.dart)) combina `connectivity_plus` (¿hay red?) con un sondeo HTTP al REST de Supabase con timeout de 4 s (¿hay internet real?). Se re-sondea al cambiar de red, al reintentar desde el banner y tras una carga fallida. `OfflineService.hayConexion()` ahora usa este sondeo, así que en Wi-Fi sin salida un registro se encola de inmediato en vez de agotar los timeouts de subida.
+- `fetchData()` ya no deja pantallas vacías en silencio: `loadError` siempre queda con un mensaje cuando algo falló, y las consultas que antes vaciaban su lista al fallar (visitas, proyectos, empleados, departamentos, empresas) ahora conservan lo anterior.
 
 ## 8.1 Qué se persiste y dónde
 
@@ -126,8 +146,9 @@ El Dashboard tiene un `Consumer<OfflineService>` que muestra un banner con `pend
 
 ## 8.7 Limitaciones conocidas
 
-- Solo tres tipos de operación. Visitas, auditorías, reservas y correcciones no funcionan sin conexión.
+- La caché de lectura es "última respuesta conocida": no hay sincronización incremental ni resolución de conflictos. Sin conexión se puede **ver**, no crear reservas ni visitas.
+- Solo tres tipos de operación en la cola de escritura. Visitas, auditorías, reservas y correcciones no funcionan sin conexión.
 - `liquidacion` y `factura` no tienen chequeo de duplicados. Un timeout después de que el servidor insertó puede generar registros repetidos en el siguiente `flush`.
 - Si sube la foto pero falla el `INSERT`, el reintento vuelve a subir la foto y deja un archivo huérfano en Storage.
 - Toda la cola vive en un solo string JSON en `SharedPreferences`, cargado completo en memoria. Adecuado para decenas de operaciones, no para miles.
-- Si en el futuro se necesita caché de lectura o consultas sobre la cola, ese sería el momento de migrar a `sqflite` o Drift.
+- La cola de escritura sigue en `SharedPreferences`; la base SQLite (`LocalDb`) ya existe y sería el destino natural si se necesita consultarla o escalarla.

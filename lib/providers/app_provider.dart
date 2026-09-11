@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -10,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/app_logger.dart';
+import '../services/cache_service.dart';
+import '../services/connectivity_service.dart';
 import '../services/tracking_service.dart';
 
 class AppProvider extends ChangeNotifier {
@@ -38,6 +41,22 @@ class AppProvider extends ChangeNotifier {
   List<Map<String, dynamic>> companies = [];
   List<Map<String, dynamic>> employees = []; // Lista general de empleados
   List<Map<String, dynamic>> personalVehicles = []; // Vehículos personales del vendedor
+
+  // ── Estado de carga / caché ─────────────────────────────────────
+  /// Error de la última carga general (null si la última carga fue bien).
+  /// Lo muestra ConnectionBanner. Distinto de errorMessage (acciones puntuales).
+  String? loadError;
+  /// Última vez que fetchData() terminó bien, o fecha de la caché si aún no.
+  DateTime? lastSyncAt;
+  /// Nombres de consultas que fallaron en la carga actual (las que no relanzan).
+  final List<String> _fallosCarga = [];
+  /// Hay algo que mostrar (de red o de caché).
+  bool get hasCachedData =>
+      vehiculos.isNotEmpty ||
+      myReservations.isNotEmpty ||
+      visitas.isNotEmpty ||
+      gastos.isNotEmpty;
+
   String? currentEmployeeId;
   Map<String, dynamic>?
   currentEmployeeData; // Nuevo: Datos completos del perfil
@@ -124,20 +143,7 @@ class AppProvider extends ChangeNotifier {
           await _supabase.auth.signOut();
           throw "Cuenta desactivada por un administrador.";
         }
-        currentEmployeeId = res['id'].toString();
-        currentEmployeeData = res;
-
-        // ── Calcular flags administrativos ──
-        final rol = (res['rol'] ?? '').toString().toLowerCase().trim();
-        _isRoleAdmin = ['administrador', 'admin', 'superadmin', 'superadministrador']
-            .contains(rol);
-        _isContabilidad = rol == 'contabilidad';
-
-        final List sistemas = (res['sistemas_acceso'] as List?) ?? [];
-        // Permisos POR PERSONA (tokens en sistemas_acceso, ej. 'AUDITORIAS').
-        _sistemas = sistemas.map((e) => e.toString().toUpperCase()).toList();
-        // Acceso a la web = tiene OPS entre sus sistemas
-        _isWebAdmin = sistemas.contains('OPS') || _isRoleAdmin;
+        _applyEmployeeBase(res);
 
         // ¿Es responsable de algún departamento de viáticos?
         try {
@@ -170,6 +176,14 @@ class AppProvider extends ChangeNotifier {
           _allowedViews = {};
         }
 
+        // Caché del perfil para arrancar sin conexión con el mismo empleado
+        // y los mismos permisos.
+        cache.put('perfil', {
+          'empleado': res,
+          'isResponsable': _isResponsable,
+          'allowedViews': _allowedViews.toList(),
+        });
+
         notifyListeners();
       } else {
         // No employee found, currentEmployeeId remains null
@@ -191,6 +205,97 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
+  /// Aplica id, datos y flags derivados del registro de Empleados.
+  /// Compartido por la carga en línea y la carga desde caché.
+  void _applyEmployeeBase(Map<String, dynamic> res) {
+    currentEmployeeId = res['id'].toString();
+    currentEmployeeData = res;
+
+    // ── Calcular flags administrativos ──
+    final rol = (res['rol'] ?? '').toString().toLowerCase().trim();
+    _isRoleAdmin = ['administrador', 'admin', 'superadmin', 'superadministrador']
+        .contains(rol);
+    _isContabilidad = rol == 'contabilidad';
+
+    final List sistemas = (res['sistemas_acceso'] as List?) ?? [];
+    // Permisos POR PERSONA (tokens en sistemas_acceso, ej. 'AUDITORIAS').
+    _sistemas = sistemas.map((e) => e.toString().toUpperCase()).toList();
+    // Acceso a la web = tiene OPS entre sus sistemas
+    _isWebAdmin = sistemas.contains('OPS') || _isRoleAdmin;
+  }
+
+  /// Carga desde la caché local lo último que se vio, para que la app tenga
+  /// datos aunque no haya conexión. Se llama antes del primer fetchData().
+  Future<void> _loadFromCache() async {
+    if (user == null) return;
+    final sw = Stopwatch()..start();
+    try {
+      final perfil = (await cache.get('perfil'))?.asMap();
+      if (perfil != null && perfil['empleado'] is Map) {
+        _applyEmployeeBase(Map<String, dynamic>.from(perfil['empleado']));
+        _isResponsable = perfil['isResponsable'] == true;
+        _allowedViews = ((perfil['allowedViews'] as List?) ?? [])
+            .map((e) => e.toString())
+            .toSet();
+      }
+
+      Future<List<Map<String, dynamic>>> lista(String k) async =>
+          (await cache.get(k))?.asList() ?? [];
+
+      final results = await Future.wait([
+        lista('vehiculos'),
+        lista('reservas'),
+        lista('gastos'),
+        lista('visitas'),
+        lista('proyectos'),
+        lista('empleados'),
+        lista('departamentos'),
+        lista('empresas'),
+        lista('vehiculosPersonales'),
+      ]);
+      if (results[0].isNotEmpty) {
+        vehiculos = results[0];
+        totalVehiculos = vehiculos.length;
+      }
+      if (results[1].isNotEmpty) myReservations = results[1];
+      if (results[2].isNotEmpty) {
+        gastos = results[2];
+        liquidacionesPendientes =
+            gastos.where((e) => e['estado'] != 'Aprobado').length;
+      }
+      if (results[3].isNotEmpty) {
+        visitas = results[3];
+        rutasActivas = visitas.where((v) => v['estado'] == 'en_curso').length;
+      }
+      if (results[4].isNotEmpty) projects = results[4];
+      if (results[5].isNotEmpty) employees = results[5];
+      if (results[6].isNotEmpty) departments = results[6];
+      if (results[7].isNotEmpty) companies = results[7];
+      if (results[8].isNotEmpty) personalVehicles = results[8];
+
+      lastSyncAt ??= await cache.lastUpdated(['vehiculos', 'reservas']);
+      log.i('cache', 'Datos cargados desde caché', data: {
+        'ms': sw.elapsedMilliseconds,
+        'vehiculos': vehiculos.length,
+        'reservas': myReservations.length,
+        'perfil': perfil != null,
+        'ultimaSync': lastSyncAt?.toIso8601String(),
+      });
+      notifyListeners();
+    } catch (e, st) {
+      log.w('cache', 'No se pudo cargar la caché', error: e);
+      debugPrint('$st');
+    }
+  }
+
+  /// Registra una consulta que falló pero no detiene la carga (mantiene los
+  /// datos anteriores / de caché). fetchData() lo refleja en loadError.
+  void _fallo(String nombre, Object e) {
+    _fallosCarga.add(nombre);
+    log.w('fetchData', 'Consulta "$nombre" falló; se mantienen datos previos',
+        error: e);
+  }
+
   String? get notificationMessage => _notificationMessage;
 
   bool firebaseAvailable;
@@ -204,24 +309,26 @@ class AppProvider extends ChangeNotifier {
 
   void _init() {
     log.setUser(user?.email);
+    cache.setScope(user?.email);
     log.i('auth', 'Provider iniciado', data: {
       'sesionPersistida': user != null,
       'email': user?.email,
       'tokenExpira': _supabase.auth.currentSession?.expiresAt,
     });
-    _supabase.auth.onAuthStateChange.listen((data) {
+    _supabase.auth.onAuthStateChange.listen((data) async {
       log.setUser(data.session?.user.email ?? user?.email);
       log.i('auth', 'Evento de sesión: ${data.event.name}', data: {
         'email': data.session?.user.email,
         'tokenExpira': data.session?.expiresAt,
       });
       if (data.event == AuthChangeEvent.signedIn) {
+        cache.setScope(data.session?.user.email ?? user?.email);
+        await _loadFromCache();
         fetchData();
       } else if (data.event == AuthChangeEvent.signedOut) {
-        // Clear data on logout
-        vehiculos = [];
-        projects = [];
         _unsubscribeFromLiquidaciones(); // Clean up
+        _clearData();
+        await cache.clearScope();
         notifyListeners();
       }
     }, onError: (e, st) {
@@ -232,10 +339,36 @@ class AppProvider extends ChangeNotifier {
     if (firebaseAvailable) {
       _initNotifications();
     }
-    
+
     _loadGpsPreferences();
     _checkAppVersion(); // Check for updates
-    fetchData(); // Initial attempt
+    // Primero lo guardado (instantáneo, funciona sin red); luego la red.
+    _loadFromCache().whenComplete(fetchData);
+  }
+
+  /// Limpia todo el estado de datos al cerrar sesión.
+  void _clearData() {
+    vehiculos = [];
+    gastos = [];
+    visitas = [];
+    reservas = [];
+    projects = [];
+    myReservations = [];
+    employees = [];
+    personalVehicles = [];
+    currentEmployeeId = null;
+    currentEmployeeData = null;
+    totalVehiculos = 0;
+    liquidacionesPendientes = 0;
+    rutasActivas = 0;
+    loadError = null;
+    lastSyncAt = null;
+    _isWebAdmin = false;
+    _isRoleAdmin = false;
+    _isContabilidad = false;
+    _isResponsable = false;
+    _allowedViews = {};
+    _sistemas = [];
   }
 
   Future<void> _checkAppVersion() async {
@@ -521,7 +654,9 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> signOut() async {
     _trackingService.stopTracking();
+    log.i('auth', 'Cierre de sesión solicitado');
     await _supabase.auth.signOut();
+    // La caché del usuario se borra en el handler de signedOut.
   }
 
   // Tracking Controls
@@ -541,51 +676,101 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Tiempo máximo por consulta de la carga general. Antes no había límite y
+  /// con Wi-Fi cautivo o señal débil la app se quedaba "cargando" sin aviso.
+  static const Duration _queryTimeout = Duration(seconds: 20);
+
+  /// Ejecuta una consulta de fetchData con timeout y registro de duración.
+  Future<T> _consulta<T>(String nombre, Future<T> Function() body) =>
+      log.time('fetchData', nombre, () => body().timeout(
+            _queryTimeout,
+            onTimeout: () => throw TimeoutException(
+                '$nombre tardó más de ${_queryTimeout.inSeconds} s'),
+          ));
+
+  /// Mensaje corto y entendible para el banner según el tipo de error.
+  static String _describirError(Object e) {
+    final s = e.toString();
+    if (e is TimeoutException) {
+      return 'El servidor tardó demasiado en responder. ($s)';
+    }
+    if (e is SocketException ||
+        s.contains('Failed host lookup') ||
+        s.contains('Connection refused') ||
+        s.contains('Network is unreachable') ||
+        s.contains('ClientException')) {
+      return 'No se pudo conectar con el servidor. ($s)';
+    }
+    if (s.contains('JWT') || s.contains('401') || s.contains('expired')) {
+      return 'La sesión no es válida o expiró. Cerrá sesión y volvé a entrar. ($s)';
+    }
+    return s;
+  }
+
   Future<void> fetchData() async {
     isLoading = true;
     errorMessage = null;
+    _fallosCarga.clear();
     notifyListeners();
     final sw = Stopwatch()..start();
-    log.i('fetchData', 'Inicio', data: {'sesion': user != null});
+    log.i('fetchData', 'Inicio', data: {
+      'sesion': user != null,
+      'online': connectivity.isOnline,
+      'enCache': hasCachedData,
+    });
 
     try {
       // Siempre intentar cargar departamentos y empresas (necesario para registro)
       await Future.wait([
-        log.time('fetchData', 'departamentos', fetchDepartments),
-        log.time('fetchData', 'empresas', fetchCompanies),
+        _consulta('departamentos', fetchDepartments),
+        _consulta('empresas', fetchCompanies),
       ]);
 
       if (user == null) return;
 
       // 1. First lookup Employee ID (needed for reservations/viaticos filtering)
-      await log.time('fetchData', 'empleado', _fetchCurrentEmployeeId);
+      await _consulta('empleado', _fetchCurrentEmployeeId);
       if (currentEmployeeId == null) {
         log.w('fetchData', 'Sin currentEmployeeId: reservas y viáticos no se cargarán');
       }
 
       // 2. Fetch all data in parallel
       await Future.wait([
-        log.time('fetchData', 'vehiculos', _fetchFlotilla),
-        log.time('fetchData', 'viaticos', _fetchViaticos),
-        log.time('fetchData', 'rutas', _fetchRutas),
-        log.time('fetchData', 'proyectos', _fetchProjects),
-        log.time('fetchData', 'reservas', _fetchMyReservations),
-        log.time('fetchData', 'empleados', _fetchEmployees),
-        log.time('fetchData', 'vehiculosPersonales', fetchPersonalVehicles),
+        _consulta('vehiculos', _fetchFlotilla),
+        _consulta('viaticos', _fetchViaticos),
+        _consulta('rutas', _fetchRutas),
+        _consulta('proyectos', _fetchProjects),
+        _consulta('reservas', _fetchMyReservations),
+        _consulta('empleados', _fetchEmployees),
+        _consulta('vehiculosPersonales', fetchPersonalVehicles),
       ]);
+
+      if (_fallosCarga.isEmpty) {
+        loadError = null;
+        lastSyncAt = DateTime.now();
+      } else {
+        loadError =
+            'No se pudieron actualizar: ${_fallosCarga.join(', ')}. '
+            'Se muestran los datos guardados.';
+        connectivity.checkInternet(force: true);
+      }
       log.i('fetchData', 'Completo', data: {
         'ms': sw.elapsedMilliseconds,
         'vehiculos': vehiculos.length,
         'reservas': myReservations.length,
         'proyectos': projects.length,
+        'fallos': _fallosCarga,
       });
     } catch (e, st) {
       log.e('fetchData', 'Falló la carga general',
           data: {'ms': sw.elapsedMilliseconds}, error: e, stack: st);
       if (user != null) {
-        errorMessage = e.toString().contains("desactivada")
-            ? e.toString()
-            : "Error de conexión: $e";
+        final desactivada = e.toString().contains("desactivada");
+        errorMessage = desactivada ? e.toString() : "Error de conexión: $e";
+        loadError = desactivada ? e.toString() : _describirError(e);
+        // Sondear internet para que el banner distinga "sin internet" de
+        // "error del servidor".
+        connectivity.checkInternet(force: true);
       }
     } finally {
       isLoading = false;
@@ -638,6 +823,7 @@ class AppProvider extends ChangeNotifier {
             return fechaRegreso == null || fechaRegreso.isAfter(cutoff);
           })
           .toList();
+      cache.put('reservas', myReservations);
 
       // Post-process to ensure clean structure similar to vehicle list if needed
       // but simpler to just pass raw Map to UI.
@@ -660,9 +846,11 @@ class AppProvider extends ChangeNotifier {
               return fechaRegreso == null || fechaRegreso.isAfter(cutoff);
             })
             .toList();
+        cache.put('reservas', myReservations);
       } catch (e2, st2) {
         log.e('fetchData', 'Reservas: fallback también falló',
             error: e2, stack: st2);
+        _fallo('reservas', e2);
       }
     }
   }
@@ -715,6 +903,7 @@ class AppProvider extends ChangeNotifier {
           })
           .toList()
           .cast<Map<String, dynamic>>();
+      cache.put('vehiculos', vehiculos);
     } catch (e, st) {
       log.e('fetchData', 'Falló la carga de vehículos', error: e, stack: st);
       rethrow;
@@ -746,6 +935,7 @@ class AppProvider extends ChangeNotifier {
           )
           .toList()
           .cast<Map<String, dynamic>>();
+      cache.put('gastos', gastos);
     } catch (e) {
       debugPrint("Error loading viaticos: $e");
       rethrow;
@@ -767,10 +957,10 @@ class AppProvider extends ChangeNotifier {
 
       // Conteo para el dashboard
       rutasActivas = visitas.where((v) => v['estado'] == 'en_curso').length;
+      cache.put('visitas', visitas);
     } catch (e) {
-      debugPrint("Error loading visitas: $e");
-      visitas = [];
-      rutasActivas = 0;
+      // Se mantienen las visitas previas (o de caché) en vez de vaciar.
+      _fallo('visitas', e);
     }
   }
 
@@ -837,9 +1027,10 @@ class AppProvider extends ChangeNotifier {
           .order('alias', ascending: true);
 
       personalVehicles = List<Map<String, dynamic>>.from(res);
+      cache.put('vehiculosPersonales', personalVehicles);
       notifyListeners();
     } catch (e) {
-      debugPrint("Error fetching personal vehicles: $e");
+      _fallo('vehículos personales', e);
     }
   }
 
@@ -1041,10 +1232,10 @@ class AppProvider extends ChangeNotifier {
           )
           .toList()
           .cast<Map<String, dynamic>>();
+      cache.put('proyectos', projects);
     } catch (e) {
-      debugPrint("Error loading projects: $e");
-      // Don't block app if projects fail
-      projects = [];
+      // No bloquea la app; se mantienen los proyectos previos (o de caché).
+      _fallo('proyectos', e);
     }
   }
 
@@ -1068,9 +1259,9 @@ class AppProvider extends ChangeNotifier {
           })
           .toList()
           .cast<Map<String, dynamic>>();
+      cache.put('empleados', employees);
     } catch (e) {
-      debugPrint("DEBUG: ERROR cargando empleados en AppProvider: $e");
-      employees = [];
+      _fallo('empleados', e);
     }
   }
 
@@ -1083,10 +1274,10 @@ class AppProvider extends ChangeNotifier {
           .order('nombre', ascending: true);
 
       departments = List<Map<String, dynamic>>.from(res as List);
+      cache.put('departamentos', departments);
       notifyListeners();
     } catch (e) {
-      debugPrint("Error loading departments: $e");
-      departments = [];
+      _fallo('departamentos', e);
     }
   }
 
@@ -1103,10 +1294,10 @@ class AppProvider extends ChangeNotifier {
             'nombre': e['nombre_comercial'] ?? 'Sin nombre',
           })
           .toList();
+      cache.put('empresas', companies);
       notifyListeners();
     } catch (e) {
-      debugPrint("Error loading companies: $e");
-      companies = [];
+      _fallo('empresas', e);
     }
   }
 

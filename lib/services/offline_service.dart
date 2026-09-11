@@ -20,6 +20,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
 import 'app_logger.dart';
+import 'connectivity_service.dart';
 
 class OfflineService extends ChangeNotifier {
   OfflineService._();
@@ -63,12 +64,13 @@ class OfflineService extends ChangeNotifier {
   bool _online(List<ConnectivityResult> r) =>
       r.any((x) => x != ConnectivityResult.none);
 
+  /// Internet REAL (no solo "hay una red"): delega en ConnectivityService,
+  /// que sondea el backend con timeout corto. Así, en Wi-Fi sin salida se
+  /// encola de inmediato en vez de agotar los timeouts de subida.
   Future<bool> hayConexion() async {
     try {
-      final r = await Connectivity().checkConnectivity();
-      final online = _online(r);
-      log.d('offline', 'hayConexion',
-          data: {'online': online, 'tipos': r.map((x) => x.name).toList()});
+      final online = await ConnectivityService.instance.checkInternet();
+      log.d('offline', 'hayConexion', data: {'online': online});
       return online;
     } catch (e) {
       log.w('offline', 'hayConexion falló; se asume que hay red', error: e);

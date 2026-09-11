@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../providers/app_provider.dart';
 import '../widgets/bottom_nav.dart';
+import '../widgets/connection_banner.dart';
 import 'flotilla_screen.dart';
 import 'viaticos_screen.dart';
 import 'visitas_screen.dart';
@@ -254,7 +255,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     return Scaffold(
       body: SafeArea(
-        child: IndexedStack(index: provider.currentIndex, children: screens),
+        child: Column(
+          children: [
+            // Aviso global: sin internet o carga fallida (datos desde caché).
+            const ConnectionBanner(),
+            Expanded(
+              child: IndexedStack(index: provider.currentIndex, children: screens),
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: const BottomNav(),
     );

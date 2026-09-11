@@ -19,7 +19,7 @@ class LocalDb {
   static final LocalDb instance = LocalDb._();
 
   static const String dbName = 'mecsa_ops_local.db';
-  static const int dbVersion = 1;
+  static const int dbVersion = 2;
 
   Database? _db;
   Future<Database>? _opening;
@@ -48,12 +48,26 @@ class LocalDb {
 
   Future<void> _onCreate(Database db, int version) async {
     await _createLogTable(db);
+    await _createCacheTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Migraciones incrementales. Ejemplo futuro:
-    // if (oldVersion < 2) await _createCacheTable(db);
+    // Migraciones incrementales: solo agregar, nunca borrar.
     if (oldVersion < 1) await _createLogTable(db);
+    if (oldVersion < 2) await _createCacheTable(db);
+  }
+
+  /// Caché de lectura: última respuesta conocida de cada consulta remota,
+  /// serializada en JSON. Permite mostrar datos sin conexión.
+  /// key: `usuario:nombre` (p.ej. `ana@mecsa.net:reservas`).
+  Future<void> _createCacheTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS cache (
+        key        TEXT PRIMARY KEY,
+        json       TEXT NOT NULL,
+        updated_ms INTEGER NOT NULL
+      )
+    ''');
   }
 
   Future<void> _createLogTable(Database db) async {

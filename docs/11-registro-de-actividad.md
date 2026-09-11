@@ -118,6 +118,8 @@ Reglas:
 - `data` debe ser serializable a JSON (valores no serializables se convierten con `toString()`).
 - El logger nunca lanza. Si la base no está lista, acumula hasta 500 entradas en memoria y las vuelca al abrir.
 
-## 11.7 Evolución prevista de `LocalDb`
+## 11.7 Otras tablas de `LocalDb`
 
-`LocalDb` es el único punto de acceso a SQLite. Las próximas tablas planeadas (ver [Observaciones](10-observaciones.md) y [Modo offline](08-modo-offline.md)) son la caché de lectura de vehículos y reservas, y la migración de la cola offline desde `SharedPreferences`. Se agregan subiendo `dbVersion` y creando las tablas en `_onUpgrade`, sin borrar las existentes.
+`LocalDb` es el único punto de acceso a SQLite (`dbVersion = 2`). Además de `app_log` aloja `cache` (caché de lectura, ver [Modo offline §8.0](08-modo-offline.md)). La migración de la cola offline desde `SharedPreferences` sería la siguiente. Las tablas se agregan subiendo `dbVersion` y creándolas en `_onUpgrade`, sin borrar las existentes.
+
+Módulos de log que agregó la caché: `cache` (carga desde caché, fallos de lectura/escritura) y `conectividad` (cambios de red, resultado de cada sondeo de internet).
