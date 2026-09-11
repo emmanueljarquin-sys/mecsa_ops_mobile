@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/chat.dart';
+import '../providers/app_provider.dart';
 import '../services/chat_service.dart';
 import '../services/connectivity_service.dart';
 import '../theme/app_theme.dart';
@@ -56,7 +57,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Future<void> _cargar({bool silencioso = false, bool forzar = false}) async {
     if (!silencioso && mounted) setState(() => _cargando = _chats.isEmpty);
     try {
-      final l = await ChatService.instance.listarChats(forzarRed: forzar);
+      final p = context.read<AppProvider>();
+      final l = await ChatService.instance.listarChats(
+        forzarRed: forzar,
+        empleadoId: p.currentEmployeeId,
+        esAdmin: p.isRoleAdmin,
+      );
       if (!mounted) return;
       setState(() {
         _chats = l;
@@ -185,12 +191,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.settings_suggest, color: Colors.blue.shade800),
+                      Icon(Icons.hourglass_top, color: context.isDarkMode ? Colors.blue.shade300 : Colors.blue.shade800),
                       const SizedBox(width: 10),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'El chat no está configurado. Un administrador debe indicar la URL, la cuenta y la clave de Wapi en Perfil → Chat CRM.',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0C4A6E)),
+                          'Pendiente de conectar: la pestaña está lista, pero falta habilitar el acceso de la app al esquema waba_crm en Supabase. Mientras tanto usa el chat del CRM web.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: context.isDarkMode ? Colors.blue.shade100 : const Color(0xFF0C4A6E),
+                          ),
                         ),
                       ),
                     ],
@@ -208,7 +218,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                               _filtro.isEmpty
                                   ? (cfg.configurado
                                       ? 'No hay conversaciones todavía.'
-                                      : 'Configura el chat para ver las conversaciones.')
+                                      : 'Las conversaciones aparecerán aquí cuando se conecte el chat.')
                                   : 'Sin resultados para "$_filtro".',
                             )
                           : RefreshIndicator(

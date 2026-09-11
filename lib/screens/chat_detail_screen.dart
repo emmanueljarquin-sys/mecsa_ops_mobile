@@ -51,7 +51,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   Future<void> _cargar({bool silencioso = false}) async {
     try {
-      final l = await ChatService.instance.mensajes(widget.chat.waId);
+      final l = await ChatService.instance.mensajes(widget.chat);
       if (!mounted) return;
       final cambio = l.length != _msgs.length;
       setState(() {
@@ -86,7 +86,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (t.isEmpty || _enviando) return;
     setState(() => _enviando = true);
     try {
-      final m = await ChatService.instance.enviarTexto(widget.chat.waId, t);
+      final m = await ChatService.instance.enviarTexto(widget.chat, t);
       _texto.clear();
       if (m != null && mounted) {
         setState(() => _msgs = [..._msgs, m]);
@@ -342,7 +342,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   Widget _barraEnvio(bool puedeEnviar, bool online, ChatResumen ch, bool dark) {
     final c = AppColors.of(context);
     String? motivo;
-    if (!ChatConfig.envioHabilitado) {
+    if (!ChatConfig.conectado) {
+      motivo = 'Chat pendiente de conectar con el CRM (waba_crm).';
+    } else if (!ChatConfig.envioHabilitado) {
       motivo = 'Responder desde la app estará disponible próximamente. Por ahora responde desde el CRM web.';
     } else if (!online) {
       motivo = 'Sin conexión: no se pueden enviar mensajes.';

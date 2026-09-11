@@ -315,3 +315,7 @@ sequenceDiagram
 ## 3.8 Vehículos personales
 
 Aunque `fetchPersonalVehicles` vive en el provider junto con la flotilla, los vehículos personales pertenecen al módulo de **Visitas**: son los vehículos propios del empleado con los que hace recorridos que luego se pagan por kilometraje. Tabla `visitas.vehiculos_personales` con `alias`, `antiguedad`, `tipo`, `combustible`. Ver [Visitas](05-visitas.md).
+
+## 3.9 Historial de reservas
+
+`ReservasHistorialScreen` (botón "Historial" junto a "Reservar") busca en `flotilla.reservas` con join de vehículo, filtros de texto (`ubicacion`, `motivo`, `personal_incluido`; placa y modelo en memoria), estado y rango de `fecha_salida`, paginado de 30. Un usuario ve las suyas; un admin ve todas con el nombre del empleado. Cada tarjeta muestra badges **Salida** y **Entrada** según `registros_vehiculos` (consulta en lote por página, sin rechazados). Abre `ReservationDetailScreen(soloLectura: true)`: sin cancelar, registrar ni corregir; muestra qué se registró con km y hora, y el resumen del viaje si hay salida y entrada. Sin red muestra las propias guardadas en SQLite.

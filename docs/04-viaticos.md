@@ -193,3 +193,7 @@ flowchart LR
 ```
 
 El empleado puede recibir **dos avisos** por el mismo evento: uno local generado por Realtime y otro push desde el servidor.
+
+## 4.7 Historial de liquidaciones
+
+`LiquidacionesHistorialScreen` (botón "historial" junto al "+" de Viáticos) busca en `viaticos.liquidaciones` con filtros de texto (`descripcion`, `personal_incluido`, `tarjeta_ult4` vía `ilike`), estado, tipo y rango de `fecha`, paginado de 30. Un usuario normal ve solo `empleado_id = propio`; un admin (`isRoleAdmin`) ve todas y la tarjeta muestra el empleado (nombres en lote desde `Empleados`) y el proyecto (`proyectos.projects`). Abre `LiquidacionDetailScreen(soloLectura: true)`: sin eliminar, sin agregar/editar facturas, sin solicitar corrección ni comentar; sí permite ver comprobantes y exportar el PDF. Sin red muestra las del último mes guardadas en SQLite.

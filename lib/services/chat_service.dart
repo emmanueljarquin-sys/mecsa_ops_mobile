@@ -1,189 +1,140 @@
 // =============================================================================
-// chat_service.dart — Chat CRM (WhatsApp) vía API de Wapi
+// chat_service.dart — Chat CRM (WhatsApp) sobre Supabase, esquema `waba_crm`
 // -----------------------------------------------------------------------------
-// El chat del CRM no vive en Supabase: lo sirve la plataforma Wapi (API .NET
-// de WhatsApp de Grupo Mecsa). Este servicio consume esos endpoints en modo
-// lectura y deja listo el envío:
+// ESTADO: PENDIENTE DE CONECTAR. La interfaz (pestaña Chat, lista y
+// conversación) está terminada y este servicio ya consulta `waba_crm`, pero
+// hoy el rol `authenticated` no tiene permiso de lectura sobre ese esquema
+// (Postgres responde "permission denied"), así que la pestaña muestra un
+// aviso de "pendiente de conexión" hasta que:
 //
-//   GET  /api/accounts/{cuenta}/contacts?take=..            lista de chats
-//   GET  /api/accounts/{cuenta}/messages?take=200           últimos mensajes de la cuenta
-//   GET  /api/accounts/{cuenta}/contacts/{waId}/messages    historial de un chat
-//   POST /api/accounts/{cuenta}/messages/text               responder (texto)
-//   POST /api/accounts/{cuenta}/messages/{waMessageId}/read marcar leído
+//   1. Se exponga `waba_crm` en la API de Supabase y se dé SELECT a
+//      `authenticated` sobre conversations, conversation_events, queues y
+//      queue_members (con RLS: admin ve todo; los demás solo lo asignado).
+//   2. Se confirmen los nombres de columna en [WabaCrm] (abajo) y se compile
+//      con --dart-define=WABA_CHAT=true (o se cambie el valor por defecto).
 //
-// Autenticación: header `X-Api-Key` con una clave de integración del tenant.
-// La URL base, la cuenta y la clave se configuran en Perfil → Chat CRM
-// (ChatConfig, guardado en SharedPreferences) o por --dart-define.
+// Tablas detectadas en el esquema: conversations, conversation_events
+// (mensajes), conversation_notes, queues, queue_members.
 //
-// Sin conexión: la lista y el historial se leen de la caché (tabla `cache`),
-// así que los chats ya vistos se pueden consultar sin red. No se encola el
-// envío: responder requiere conexión (ventana de 24 h de WhatsApp).
+// Regla de visibilidad (AppProvider.puedeVerChat decide quién ve la pestaña):
+//   - admin: todas las conversaciones.
+//   - vendedor / ventas / asesor / chat_role: solo las asignadas a él
+//     (conversations.<asignadoA> = su empleado) o a una cola de la que es
+//     miembro (queue_members).
+//
+// Sin conexión: lista e historial se leen de la caché (tabla `cache`).
 // =============================================================================
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/chat.dart';
 import 'app_logger.dart';
 import 'cache_service.dart';
 import 'connectivity_service.dart';
 
-/// Configuración de acceso a Wapi. Valores por defecto vía `--dart-define`
-/// (WAPI_BASE_URL, WAPI_ACCOUNT_ID, WAPI_API_KEY); el usuario admin puede
-/// sobrescribirlos desde Perfil.
+/// Nombres de tablas y columnas de `waba_crm`. Se ajustan aquí cuando se
+/// confirme la estructura real; el resto del código no cambia.
+class WabaCrm {
+  static const String schema = 'waba_crm';
+
+  // Tablas
+  static const String tConversaciones = 'conversations';
+  static const String tEventos = 'conversation_events';
+  static const String tNotas = 'conversation_notes';
+  static const String tColas = 'queues';
+  static const String tMiembros = 'queue_members';
+
+  // conversations
+  static const String cId = 'id';
+  static const String cWaId = 'wa_id'; // número del contacto (E.164 sin '+')
+  static const String cNombre = 'contact_name';
+  static const String cEmpresa = 'company';
+  static const String cEstado = 'status'; // open | pending | closed
+  static const String cAsignadoA = 'assigned_to'; // empleado/agente responsable
+  static const String cCola = 'queue_id';
+  static const String cNoLeidos = 'unread_count';
+  static const String cUltimoMensaje = 'last_message';
+  static const String cUltimaActividad = 'last_message_at';
+  static const String cVentanaHasta = 'window_expires_at';
+  static const String cEtiquetas = 'tags';
+
+  // conversation_events (mensajes)
+  static const String eId = 'id';
+  static const String eConversacion = 'conversation_id';
+  static const String eWaMessageId = 'wa_message_id';
+  static const String eDireccion = 'direction'; // inbound | outbound
+  static const String eTipo = 'type'; // text | image | audio | document | ...
+  static const String eCuerpo = 'body';
+  static const String eEstado = 'status'; // sent | delivered | read | failed
+  static const String eFecha = 'created_at';
+  static const String eMediaMime = 'media_mime_type';
+  static const String eMediaNombre = 'media_filename';
+
+  // queue_members
+  static const String mCola = 'queue_id';
+  static const String mMiembro = 'member_id'; // id de empleado / usuario
+}
+
+/// Interruptores del chat. Se cambian por --dart-define sin tocar código.
 class ChatConfig extends ChangeNotifier {
   ChatConfig._();
   static final ChatConfig instance = ChatConfig._();
 
-  static const String _defBase = String.fromEnvironment('WAPI_BASE_URL', defaultValue: '');
-  static const String _defAccount = String.fromEnvironment('WAPI_ACCOUNT_ID', defaultValue: '');
-  static const String _defKey = String.fromEnvironment('WAPI_API_KEY', defaultValue: '');
+  /// Conexión con `waba_crm` activada. Apagado hasta que existan los permisos.
+  static const bool conectado = bool.fromEnvironment('WABA_CHAT', defaultValue: false);
 
-  /// Enviar respuestas desde la app. De momento apagado a propósito: la UI
-  /// está construida, pero el botón muestra "próximamente".
-  static const bool envioHabilitado = bool.fromEnvironment('WAPI_ENVIO', defaultValue: false);
+  /// Responder desde la app. Apagado a propósito: la barra de respuesta está
+  /// construida pero informa que se responde desde el CRM web.
+  static const bool envioHabilitado = bool.fromEnvironment('WABA_ENVIO', defaultValue: false);
 
-  String baseUrl = _defBase;
-  String accountId = _defAccount;
-  String apiKey = _defKey;
-  bool _cargada = false;
+  /// Compatibilidad con la UI: "configurado" = conexión activada.
+  bool get configurado => conectado;
 
-  bool get configurado =>
-      baseUrl.trim().isNotEmpty && accountId.trim().isNotEmpty && apiKey.trim().isNotEmpty;
-
-  Future<void> cargar() async {
-    if (_cargada) return;
-    try {
-      final p = await SharedPreferences.getInstance();
-      baseUrl = p.getString('chat_base_url') ?? _defBase;
-      accountId = p.getString('chat_account_id') ?? _defAccount;
-      apiKey = p.getString('chat_api_key') ?? _defKey;
-    } catch (_) {}
-    _cargada = true;
-    notifyListeners();
-  }
-
-  Future<void> guardar({String? baseUrl, String? accountId, String? apiKey}) async {
-    final p = await SharedPreferences.getInstance();
-    if (baseUrl != null) {
-      this.baseUrl = baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-      await p.setString('chat_base_url', this.baseUrl);
-    }
-    if (accountId != null) {
-      this.accountId = accountId.trim();
-      await p.setString('chat_account_id', this.accountId);
-    }
-    if (apiKey != null) {
-      this.apiKey = apiKey.trim();
-      await p.setString('chat_api_key', this.apiKey);
-    }
-    notifyListeners();
-  }
+  Future<void> cargar() async {}
 }
 
 class ChatService {
   ChatService._();
   static final ChatService instance = ChatService._();
 
+  SupabaseClient get _sb => Supabase.instance.client;
   static const Duration _timeout = Duration(seconds: 20);
 
-  ChatConfig get _cfg => ChatConfig.instance;
-
-  Uri _uri(String path, [Map<String, String>? q]) => Uri.parse(
-        '${_cfg.baseUrl}/api/accounts/${_cfg.accountId}/$path',
-      ).replace(queryParameters: q);
-
-  Map<String, String> get _headers => {
-        'X-Api-Key': _cfg.apiKey,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      };
-
-  Future<dynamic> _get(String path, [Map<String, String>? q]) async {
-    final r = await http.get(_uri(path, q), headers: _headers).timeout(_timeout);
-    if (r.statusCode == 401 || r.statusCode == 403) {
-      throw 'La clave del chat no es válida o no tiene permiso.';
-    }
-    if (r.statusCode == 404) throw 'La cuenta de WhatsApp configurada no existe.';
-    if (r.statusCode >= 400) throw 'El servidor del chat respondió ${r.statusCode}.';
-    return jsonDecode(utf8.decode(r.bodyBytes));
-  }
-
-  Future<dynamic> _post(String path, Map<String, dynamic> body) async {
-    final r = await http
-        .post(_uri(path), headers: _headers, body: jsonEncode(body))
-        .timeout(_timeout);
-    if (r.statusCode == 401 || r.statusCode == 403) {
-      throw 'La clave del chat no es válida o no tiene permiso.';
-    }
-    if (r.statusCode >= 400) {
-      String msg = 'El servidor del chat respondió ${r.statusCode}.';
-      try {
-        final j = jsonDecode(utf8.decode(r.bodyBytes));
-        if (j is Map && j['error'] != null) msg = j['error'].toString();
-      } catch (_) {}
-      throw msg;
-    }
-    return r.bodyBytes.isEmpty ? null : jsonDecode(utf8.decode(r.bodyBytes));
-  }
-
-  /// Prueba de conexión (Perfil → Chat CRM → Probar).
-  Future<String> probar() async {
-    if (!_cfg.configurado) throw 'Falta configurar URL, cuenta o clave.';
-    final j = await _get('contacts', {'take': '1'});
-    final total = (j is Map ? j['total'] : null) ?? '?';
-    return 'Conexión correcta. Contactos en la cuenta: $total';
-  }
-
-  /// Lista de chats: contactos ordenados por actividad, con el último
-  /// mensaje de cada uno (tomado de los últimos 200 mensajes de la cuenta).
-  Future<List<ChatResumen>> listarChats({bool forzarRed = false}) async {
-    if (!_cfg.configurado) return _chatsDeCache();
+  /// Conversaciones visibles para el usuario. [empleadoId] y [esAdmin]
+  /// aplican la regla de asignación.
+  Future<List<ChatResumen>> listarChats({
+    bool forzarRed = false,
+    String? empleadoId,
+    bool esAdmin = false,
+  }) async {
+    if (!ChatConfig.conectado) return _chatsDeCache();
     final online = await connectivity.checkInternet(force: forzarRed);
     if (!online) return _chatsDeCache();
     try {
-      final results = await Future.wait([
-        _get('contacts', {'take': '100'}),
-        _get('messages', {'take': '200'}),
-      ]);
-      final contactos = List<Map<String, dynamic>>.from(
-          ((results[0] as Map)['items'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)));
-      final mensajes = List<Map<String, dynamic>>.from(
-          (results[1] as List? ?? []).map((e) => Map<String, dynamic>.from(e)));
-
-      // Último mensaje y no leídos por contacto.
-      final ultimo = <String, ChatMensaje>{};
-      final noLeidos = <String, int>{};
-      for (final raw in mensajes) {
-        final m = ChatMensaje.fromJson(raw);
-        final waId = m.esEntrante ? m.de : m.para;
-        if (waId.isEmpty) continue;
-        final prev = ultimo[waId];
-        if (prev == null || m.fecha.isAfter(prev.fecha)) ultimo[waId] = m;
-        if (m.esEntrante && m.estado != 'read') {
-          noLeidos[waId] = (noLeidos[waId] ?? 0) + 1;
-        }
+      var q = _sb.schema(WabaCrm.schema).from(WabaCrm.tConversaciones).select('*');
+      if (!esAdmin && empleadoId != null) {
+        // Asignadas directamente o por cola de la que es miembro.
+        final colas = await _sb
+            .schema(WabaCrm.schema)
+            .from(WabaCrm.tMiembros)
+            .select(WabaCrm.mCola)
+            .eq(WabaCrm.mMiembro, empleadoId)
+            .timeout(_timeout);
+        final colaIds = List<Map<String, dynamic>>.from(colas)
+            .map((r) => r[WabaCrm.mCola]?.toString())
+            .whereType<String>()
+            .toList();
+        final filtros = <String>[
+          '${WabaCrm.cAsignadoA}.eq.$empleadoId',
+          if (colaIds.isNotEmpty) '${WabaCrm.cCola}.in.(${colaIds.join(',')})',
+        ];
+        q = q.or(filtros.join(','));
       }
-
-      final lista = contactos.map((c) {
-        final waId = (c['waId'] ?? '').toString();
-        return ChatResumen.fromContacto(c, ultimo: ultimo[waId], noLeidos: noLeidos[waId] ?? 0);
-      }).toList();
-      // Contactos con mensajes recientes que no vinieron en la primera página.
-      for (final e in ultimo.entries) {
-        if (!lista.any((x) => x.waId == e.key)) {
-          lista.add(ChatResumen(
-            waId: e.key,
-            nombre: e.key,
-            ultimoMensaje: e.value,
-            noLeidos: noLeidos[e.key] ?? 0,
-            ultimaActividad: e.value.fecha,
-          ));
-        }
-      }
-      lista.sort((a, b) => b.ultimaActividad.compareTo(a.ultimaActividad));
+      final res = await q
+          .order(WabaCrm.cUltimaActividad, ascending: false, nullsFirst: false)
+          .limit(200)
+          .timeout(_timeout);
+      final lista = List<Map<String, dynamic>>.from(res).map(_resumenDeFila).toList();
       await cache.put('chat_lista', lista.map((e) => e.toJson()).toList());
       return lista;
     } catch (e) {
@@ -194,22 +145,59 @@ class ChatService {
     }
   }
 
+  ChatResumen _resumenDeFila(Map<String, dynamic> r) {
+    String s(Object? o) => (o ?? '').toString();
+    final act = DateTime.tryParse(s(r[WabaCrm.cUltimaActividad]))?.toLocal();
+    final ventana = DateTime.tryParse(s(r[WabaCrm.cVentanaHasta]))?.toLocal();
+    final waId = s(r[WabaCrm.cWaId]);
+    final ultimoTexto = s(r[WabaCrm.cUltimoMensaje]);
+    return ChatResumen(
+      waId: waId,
+      conversacionId: s(r[WabaCrm.cId]),
+      nombre: s(r[WabaCrm.cNombre]).isEmpty ? waId : s(r[WabaCrm.cNombre]),
+      empresa: r[WabaCrm.cEmpresa]?.toString(),
+      etiquetas: (r[WabaCrm.cEtiquetas] as List? ?? []).map((e) => e.toString()).toList(),
+      ventanaAbierta: ventana != null && ventana.isAfter(DateTime.now()),
+      asignadoA: r[WabaCrm.cAsignadoA]?.toString(),
+      estado: s(r[WabaCrm.cEstado]),
+      ultimoMensaje: ultimoTexto.isEmpty || act == null
+          ? null
+          : ChatMensaje(
+              id: '',
+              direccion: 'inbound',
+              de: waId,
+              para: '',
+              tipo: 'text',
+              cuerpo: ultimoTexto,
+              estado: 'received',
+              fecha: act,
+            ),
+      noLeidos: (r[WabaCrm.cNoLeidos] as num?)?.toInt() ?? 0,
+      ultimaActividad: act ?? DateTime.fromMillisecondsSinceEpoch(0),
+    );
+  }
+
   Future<List<ChatResumen>> _chatsDeCache() async {
     final hit = await cache.get('chat_lista');
     return (hit?.asList() ?? []).map(ChatResumen.fromJson).toList();
   }
 
-  /// Historial de un chat (más antiguo → más reciente).
-  Future<List<ChatMensaje>> mensajes(String waId, {int take = 100}) async {
-    final key = 'chat_msgs:$waId';
-    if (!_cfg.configurado || !await connectivity.checkInternet()) {
+  /// Historial de una conversación (más antiguo → más reciente).
+  Future<List<ChatMensaje>> mensajes(ChatResumen chat, {int take = 100}) async {
+    final key = 'chat_msgs:${chat.conversacionId ?? chat.waId}';
+    if (!ChatConfig.conectado || !await connectivity.checkInternet()) {
       return _mensajesDeCache(key);
     }
     try {
-      final j = await _get('contacts/$waId/messages', {'take': '$take'});
-      final items = List<Map<String, dynamic>>.from(
-          ((j as Map)['items'] as List? ?? []).map((e) => Map<String, dynamic>.from(e)));
-      final lista = items.map(ChatMensaje.fromJson).toList()
+      final res = await _sb
+          .schema(WabaCrm.schema)
+          .from(WabaCrm.tEventos)
+          .select('*')
+          .eq(WabaCrm.eConversacion, chat.conversacionId ?? '')
+          .order(WabaCrm.eFecha, ascending: false)
+          .limit(take)
+          .timeout(_timeout);
+      final lista = List<Map<String, dynamic>>.from(res).map(_mensajeDeFila).toList()
         ..sort((a, b) => a.fecha.compareTo(b.fecha));
       await cache.put(key, lista.map((m) => m.toJson()).toList());
       return lista;
@@ -221,37 +209,57 @@ class ChatService {
     }
   }
 
+  ChatMensaje _mensajeDeFila(Map<String, dynamic> r) {
+    String s(Object? o) => (o ?? '').toString();
+    final dir = s(r[WabaCrm.eDireccion]).toLowerCase();
+    return ChatMensaje(
+      id: s(r[WabaCrm.eId]),
+      waMessageId: r[WabaCrm.eWaMessageId]?.toString(),
+      direccion: dir == 'outbound' || dir == 'out' || dir == 'sent' ? 'outbound' : 'inbound',
+      de: '',
+      para: '',
+      tipo: s(r[WabaCrm.eTipo]).isEmpty ? 'text' : s(r[WabaCrm.eTipo]).toLowerCase(),
+      cuerpo: r[WabaCrm.eCuerpo]?.toString(),
+      estado: s(r[WabaCrm.eEstado]).toLowerCase(),
+      fecha: DateTime.tryParse(s(r[WabaCrm.eFecha]))?.toLocal() ?? DateTime.now(),
+      mediaMime: r[WabaCrm.eMediaMime]?.toString(),
+      mediaNombre: r[WabaCrm.eMediaNombre]?.toString(),
+    );
+  }
+
   Future<List<ChatMensaje>> _mensajesDeCache(String key) async {
     final hit = await cache.get(key);
     return (hit?.asList() ?? []).map(ChatMensaje.fromJson).toList();
   }
 
-  /// Responder con texto. Requiere conexión; el servidor valida la ventana
-  /// de 24 h de WhatsApp y devuelve el mensaje creado.
-  Future<ChatMensaje?> enviarTexto(String waId, String texto) async {
+  /// Responder con texto. Preparado: inserta un evento saliente en
+  /// `conversation_events`; el envío real a WhatsApp lo hace el backend del
+  /// CRM al detectar el evento. Apagado hasta que se habilite.
+  Future<ChatMensaje?> enviarTexto(ChatResumen chat, String texto) async {
     if (!ChatConfig.envioHabilitado) {
       throw 'Responder desde la app estará disponible próximamente.';
     }
-    if (!_cfg.configurado) throw 'El chat no está configurado.';
+    if (!ChatConfig.conectado) throw 'El chat aún no está conectado.';
     if (!await connectivity.checkInternet(force: true)) {
       throw 'Sin conexión a internet. Necesitas red para enviar mensajes.';
     }
-    final j = await _post('messages/text', {'to': waId, 'text': texto});
-    log.i('chat', 'Mensaje enviado', data: {'to': waId});
-    if (j is Map) {
-      try {
-        return ChatMensaje.fromJson(Map<String, dynamic>.from(j));
-      } catch (_) {}
-    }
-    return null;
+    final res = await _sb
+        .schema(WabaCrm.schema)
+        .from(WabaCrm.tEventos)
+        .insert({
+          WabaCrm.eConversacion: chat.conversacionId,
+          WabaCrm.eDireccion: 'outbound',
+          WabaCrm.eTipo: 'text',
+          WabaCrm.eCuerpo: texto,
+          WabaCrm.eEstado: 'pending',
+        })
+        .select()
+        .single()
+        .timeout(_timeout);
+    log.i('chat', 'Mensaje enviado', data: {'conversacion': chat.conversacionId});
+    return _mensajeDeFila(Map<String, dynamic>.from(res));
   }
 
-  Future<void> marcarLeido(String waMessageId) async {
-    if (!_cfg.configurado || waMessageId.isEmpty) return;
-    try {
-      await _post('messages/$waMessageId/read', {});
-    } catch (e) {
-      log.d('chat', 'marcarLeido falló', data: {'id': waMessageId, 'error': e.toString()});
-    }
-  }
+  /// Marcar leído: pendiente de definir en el esquema (columna o evento).
+  Future<void> marcarLeido(String waMessageId) async {}
 }

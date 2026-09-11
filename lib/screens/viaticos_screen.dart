@@ -9,6 +9,7 @@ import '../services/liquidaciones_local.dart';
 import '../services/offline_service.dart';
 import 'liquidacion_detail_screen.dart';
 import 'liquidacion_form_screen.dart';
+import 'liquidaciones_historial_screen.dart';
 
 class ViaticosScreen extends StatefulWidget {
   const ViaticosScreen({super.key});
@@ -273,25 +274,36 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
                       ),
                     ],
                   ),
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 4,
-                          offset: Offset(0, 2),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LiquidacionesHistorialScreen()),
                         ),
-                      ],
-                    ),
-                    child: IconButton(
-                      onPressed: () => _navigateToForm(),
-                      icon: const Icon(Icons.add, color: Colors.white),
-                      padding: EdgeInsets.zero,
-                    ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Theme.of(context).colorScheme.primary,
+                          side: BorderSide(color: Theme.of(context).colorScheme.primary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        ),
+                        icon: const Icon(Icons.history, size: 18),
+                        label: const Text('Historial', style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => _navigateToForm(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Theme.of(context).colorScheme.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Nueva', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
                   ),
                 ],
               ),

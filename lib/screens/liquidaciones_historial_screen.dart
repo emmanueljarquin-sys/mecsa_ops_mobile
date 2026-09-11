@@ -1,47 +1,47 @@
 // =============================================================================
-// reservas_historial_screen.dart — Flotilla → Historial de reservas
+// liquidaciones_historial_screen.dart — Viáticos → Historial de liquidaciones
 // -----------------------------------------------------------------------------
-// Búsqueda de reservas pasadas. Un usuario normal ve solo las suyas; un
-// administrador (rol admin) ve las de todos y puede filtrar por empleado.
-// Filtros: texto (placa, vehículo, destino, motivo, empleado), estado y
-// rango de fechas. Paginado de 30 en 30. Sin conexión muestra lo que hay
-// en SQLite (solo las propias).
+// Búsqueda de liquidaciones pasadas, solo lectura. Un usuario normal ve las
+// suyas; un administrador (rol admin) ve las de todos con el nombre del
+// empleado. Filtros: texto (descripción, personal, proyecto, empleado),
+// tipo, estado y rango de fechas. Paginado de 30 en 30. Sin conexión muestra
+// las del último mes guardadas en SQLite (solo las propias).
 // =============================================================================
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/liquidacion.dart';
 import '../providers/app_provider.dart';
 import '../services/connectivity_service.dart';
-import '../services/reservas_local.dart';
+import '../services/liquidaciones_local.dart';
 import '../theme/app_theme.dart';
 import '../utils/mensajes_error.dart';
-import '../widgets/cached_image.dart';
 import '../widgets/offline_notice.dart';
-import 'reservation_detail_screen.dart';
+import 'liquidacion_detail_screen.dart';
 
-class ReservasHistorialScreen extends StatefulWidget {
-  const ReservasHistorialScreen({super.key});
+class LiquidacionesHistorialScreen extends StatefulWidget {
+  const LiquidacionesHistorialScreen({super.key});
 
   @override
-  State<ReservasHistorialScreen> createState() => _ReservasHistorialScreenState();
+  State<LiquidacionesHistorialScreen> createState() => _LiquidacionesHistorialScreenState();
 }
 
-class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
+class _LiquidacionesHistorialScreenState extends State<LiquidacionesHistorialScreen> {
   static const int _pagina = 30;
   final _buscar = TextEditingController();
   final _scroll = ScrollController();
-  List<Map<String, dynamic>> _items = [];
+  List<Liquidacion> _items = [];
   bool _cargando = false;
   bool _hayMas = true;
   bool _desdeLocal = false;
   String? _error;
   String _estado = 'todos';
+  String _tipo = 'todos';
   DateTimeRange? _rango;
   int _desde = 0;
   final Map<String, String> _empleadosNombre = {};
-  /// reserva_id → {'salida': bool, 'entrada': bool} (registros no rechazados).
-  final Map<String, Map<String, bool>> _registros = {};
+  final Map<String, String> _proyectosNombre = {};
 
   @override
   void initState() {
@@ -80,11 +80,10 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
     try {
       final online = await connectivity.checkInternet();
       if (!online) {
-        // Sin red: solo las propias guardadas en SQLite.
-        final locales = await ReservasLocal.instance.listar(empleadoId);
+        final locales = await LiquidacionesLocal.instance.listar(empleadoId);
         if (!mounted) return;
         setState(() {
-          _items = _filtrarLocal(locales);
+          _items = _filtrarLocal(locales.where((l) => !l.esLocal).toList());
           _hayMas = false;
           _desdeLocal = true;
           _cargando = false;
@@ -92,64 +91,70 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
         return;
       }
       final sb = Supabase.instance.client;
-      var q = sb.schema('flotilla').from('reservas').select('*, vehiculos(*)');
+      var q = sb.schema('viaticos').from('liquidaciones').select('*');
       if (!_esAdmin) q = q.eq('empleado_id', empleadoId);
       if (_estado != 'todos') q = q.eq('estado', _estado);
+      if (_tipo != 'todos') q = q.eq('tipo', _tipo);
       if (_rango != null) {
         q = q
-            .gte('fecha_salida', _rango!.start.toIso8601String())
-            .lte('fecha_salida', _rango!.end.add(const Duration(days: 1)).toIso8601String());
+            .gte('fecha', _rango!.start.toIso8601String().split('T')[0])
+            .lte('fecha', _rango!.end.toIso8601String().split('T')[0]);
       }
       final texto = _buscar.text.trim();
       if (texto.isNotEmpty) {
-        // Búsqueda por destino/motivo en la reserva; placa y modelo se filtran
-        // en memoria sobre la página (el join no admite ilike directo).
-        q = q.or('ubicacion.ilike.%$texto%,motivo.ilike.%$texto%,personal_incluido.ilike.%$texto%');
+        q = q.or('descripcion.ilike.%$texto%,personal_incluido.ilike.%$texto%,tarjeta_ult4.ilike.%$texto%');
       }
       final res = await q
-          .order('fecha_salida', ascending: false)
+          .order('fecha', ascending: false)
+          .order('created_at', ascending: false)
           .range(_desde, _desde + _pagina - 1)
           .timeout(const Duration(seconds: 25));
-      var rows = List<Map<String, dynamic>>.from(res);
+      final rows = List<Map<String, dynamic>>.from(res);
 
-      // Nombres de empleados para el modo admin.
-      if (_esAdmin) {
-        final ids = rows.map((r) => r['empleado_id']?.toString()).whereType<String>().toSet()
-          ..removeWhere(_empleadosNombre.containsKey);
-        if (ids.isNotEmpty) {
-          try {
-            final emps = await sb
-                .from('Empleados')
-                .select('id, nombre, apellido')
-                .inFilter('id', ids.toList())
-                .timeout(const Duration(seconds: 15));
-            for (final e in List<Map<String, dynamic>>.from(emps)) {
-              _empleadosNombre[e['id'].toString()] = '${e['nombre'] ?? ''} ${e['apellido'] ?? ''}'.trim();
-            }
-          } catch (_) {}
-        }
-      }
-      // Badges de salida/entrada: registros de la página en una consulta.
-      final idsRes = rows.map((r) => r['id'].toString()).toList();
-      if (idsRes.isNotEmpty) {
+      // Nombres de empleados (admin) y proyectos, en lote.
+      final empIds = rows.map((r) => r['empleado_id']?.toString()).whereType<String>().toSet()
+        ..removeWhere(_empleadosNombre.containsKey);
+      if (_esAdmin && empIds.isNotEmpty) {
         try {
-          final regs = await sb
-              .schema('flotilla')
-              .from('registros_vehiculos')
-              .select('reserva_id, tipo, estado')
-              .inFilter('reserva_id', idsRes)
+          final emps = await sb
+              .from('Empleados')
+              .select('id, nombre, apellido')
+              .inFilter('id', empIds.toList())
               .timeout(const Duration(seconds: 15));
-          for (final g in List<Map<String, dynamic>>.from(regs)) {
-            if ((g['estado'] ?? '').toString() == 'Rechazado') continue;
-            final id = g['reserva_id'].toString();
-            final tipo = (g['tipo'] ?? '').toString().toLowerCase();
-            _registros.putIfAbsent(id, () => {'salida': false, 'entrada': false})[tipo] = true;
+          for (final e in List<Map<String, dynamic>>.from(emps)) {
+            _empleadosNombre[e['id'].toString()] = '${e['nombre'] ?? ''} ${e['apellido'] ?? ''}'.trim();
           }
         } catch (_) {}
       }
+      final proyIds = rows.map((r) => r['proyecto_id']).where((p) => p != null).toSet()
+        ..removeWhere((p) => _proyectosNombre.containsKey(p.toString()));
+      if (proyIds.isNotEmpty) {
+        try {
+          final ps = await sb
+              .schema('proyectos')
+              .from('projects')
+              .select('project_id, title')
+              .inFilter('project_id', proyIds.toList())
+              .timeout(const Duration(seconds: 15));
+          for (final p in List<Map<String, dynamic>>.from(ps)) {
+            _proyectosNombre[p['project_id'].toString()] = (p['title'] ?? '').toString();
+          }
+        } catch (_) {}
+      }
+      final lista = rows.map((r) {
+        final j = Map<String, dynamic>.from(r);
+        final pn = _proyectosNombre[j['proyecto_id']?.toString()];
+        if (pn != null) j['proyecto'] = {'nombre': pn};
+        final en = _empleadosNombre[j['empleado_id']?.toString()];
+        if (en != null) {
+          final partes = en.split(' ');
+          j['empleado'] = {'nombre': partes.first, 'apellido': partes.skip(1).join(' ')};
+        }
+        return Liquidacion.fromJson(j);
+      }).toList();
       if (!mounted) return;
       setState(() {
-        _items = [..._items, ...rows];
+        _items = [..._items, ...lista];
         _desde += rows.length;
         _hayMas = rows.length == _pagina;
         _desdeLocal = false;
@@ -164,41 +169,34 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
     }
   }
 
-  List<Map<String, dynamic>> _filtrarLocal(List<Map<String, dynamic>> lista) {
+  List<Liquidacion> _filtrarLocal(List<Liquidacion> lista) {
     final t = _buscar.text.trim().toLowerCase();
-    return lista.where((r) {
-      if (_estado != 'todos' && (r['estado'] ?? '').toString() != _estado) return false;
-      final fs = DateTime.tryParse(r['fecha_salida']?.toString() ?? '');
-      if (_rango != null && fs != null) {
-        if (fs.isBefore(_rango!.start) || fs.isAfter(_rango!.end.add(const Duration(days: 1)))) return false;
+    return lista.where((l) {
+      if (_estado != 'todos' && l.estado != _estado) return false;
+      if (_tipo != 'todos' && l.tipo != _tipo) return false;
+      if (_rango != null && (l.fecha.isBefore(_rango!.start) || l.fecha.isAfter(_rango!.end.add(const Duration(days: 1))))) {
+        return false;
       }
       if (t.isEmpty) return true;
-      final v = r['vehiculos'] is Map ? r['vehiculos'] as Map : {};
-      final campos = [r['ubicacion'], r['motivo'], r['personal_incluido'], v['placa'], v['marca'], v['modelo']];
-      return campos.any((c) => (c ?? '').toString().toLowerCase().contains(t));
+      return [l.descripcion, l.personalIncluido, l.proyectoNombre, l.tarjetaUlt4]
+          .any((c) => (c ?? '').toLowerCase().contains(t));
     }).toList();
   }
 
-  /// Filtro en memoria por placa/modelo sobre lo ya cargado (complemento
-  /// a la búsqueda del servidor por destino/motivo).
-  List<Map<String, dynamic>> get _visibles {
+  List<Liquidacion> get _visibles {
     final t = _buscar.text.trim().toLowerCase();
     if (t.isEmpty || _desdeLocal) return _items;
-    return _items.where((r) {
-      final v = r['vehiculos'] is Map ? r['vehiculos'] as Map : {};
-      final campos = [r['ubicacion'], r['motivo'], r['personal_incluido'], v['placa'], v['marca'], v['modelo'],
-        _empleadosNombre[r['empleado_id']?.toString()]];
-      return campos.any((c) => (c ?? '').toString().toLowerCase().contains(t));
-    }).toList();
+    return _items.where((l) => [l.descripcion, l.personalIncluido, l.proyectoNombre, l.tarjetaUlt4, l.empleadoCompleto]
+        .any((c) => (c ?? '').toLowerCase().contains(t))).toList();
   }
 
   Future<void> _elegirRango() async {
     final r = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2023),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
       initialDateRange: _rango,
-      helpText: 'Fechas de salida',
+      helpText: 'Fecha de la liquidación',
     );
     if (r != null) {
       setState(() => _rango = r);
@@ -207,27 +205,19 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
   }
 
   Color _colorEstado(String e) {
-    switch (e.toLowerCase()) {
+    switch (e) {
       case 'aprobada':
-      case 'confirmada':
         return Colors.green.shade700;
-      case 'pendiente':
-        return Colors.orange.shade800;
       case 'rechazada':
-      case 'cancelada':
         return Colors.red.shade700;
-      case 'completada':
-        return Colors.blue.shade700;
       default:
-        return Colors.grey;
+        return Colors.orange.shade800;
     }
   }
 
-  String _fecha(String? iso) {
-    final d = DateTime.tryParse(iso ?? '');
-    if (d == null) return '';
-    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} '
-        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  String _monto(double v) {
+    final s = v.toStringAsFixed(0);
+    return '₡${s.replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},')}';
   }
 
   @override
@@ -238,7 +228,7 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
     return Scaffold(
       backgroundColor: c.background,
       appBar: AppBar(
-        title: Text(admin ? 'Historial de reservas (todas)' : 'Historial de reservas'),
+        title: Text(admin ? 'Historial de liquidaciones (todas)' : 'Historial de liquidaciones'),
       ),
       body: Column(
         children: [
@@ -246,8 +236,8 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Column(
               children: [
-                OfflineNotice(
-                  texto: 'Sin conexión: se muestran solo tus reservas guardadas en el teléfono.',
+                const OfflineNotice(
+                  texto: 'Sin conexión: se muestran solo tus liquidaciones del último mes guardadas en el teléfono.',
                 ),
                 TextField(
                   controller: _buscar,
@@ -256,8 +246,8 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
                   onChanged: (_) => setState(() {}),
                   decoration: InputDecoration(
                     hintText: admin
-                        ? 'Placa, vehículo, destino, motivo o empleado'
-                        : 'Placa, vehículo, destino o motivo',
+                        ? 'Descripción, personal, proyecto, tarjeta o empleado'
+                        : 'Descripción, personal, proyecto o tarjeta',
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _buscar.text.isEmpty
                         ? null
@@ -277,11 +267,11 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      for (final e in const ['todos', 'Pendiente', 'Aprobada', 'Completada', 'Rechazada', 'Cancelada'])
+                      for (final e in const ['todos', 'pendiente', 'aprobada', 'rechazada'])
                         Padding(
                           padding: const EdgeInsets.only(right: 6),
                           child: ChoiceChip(
-                            label: Text(e == 'todos' ? 'Todas' : e),
+                            label: Text(e == 'todos' ? 'Todas' : e[0].toUpperCase() + e.substring(1)),
                             selected: _estado == e,
                             onSelected: (_) {
                               setState(() => _estado = e);
@@ -289,6 +279,25 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
                             },
                           ),
                         ),
+                      const SizedBox(width: 6),
+                      PopupMenuButton<String>(
+                        initialValue: _tipo,
+                        onSelected: (v) {
+                          setState(() => _tipo = v);
+                          _cargar(reiniciar: true);
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'todos', child: Text('Todos los tipos')),
+                          PopupMenuItem(value: 'VIATICOS', child: Text('Viáticos')),
+                          PopupMenuItem(value: 'COMBUSTIBLE', child: Text('Combustible')),
+                          PopupMenuItem(value: 'OTROS', child: Text('Otros')),
+                        ],
+                        child: Chip(
+                          avatar: const Icon(Icons.category_outlined, size: 16),
+                          label: Text(_tipo == 'todos' ? 'Tipo' : _tipo),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
                       ActionChip(
                         avatar: const Icon(Icons.date_range, size: 16),
                         label: Text(_rango == null
@@ -335,7 +344,7 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
                           children: [
                             Icon(Icons.history, size: 56, color: c.textMuted),
                             const SizedBox(height: 10),
-                            Text('No hay reservas con esos filtros.', style: TextStyle(color: c.textSecondary)),
+                            Text('No hay liquidaciones con esos filtros.', style: TextStyle(color: c.textSecondary)),
                           ],
                         ),
                       )
@@ -350,10 +359,7 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
                           itemBuilder: (context, i) {
                             if (i >= visibles.length) {
                               return const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(12),
-                                  child: CircularProgressIndicator(),
-                                ),
+                                child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
                               );
                             }
                             return _fila(visibles[i], admin);
@@ -366,45 +372,10 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
     );
   }
 
-  /// Badge "Salida ✓ / Entrada ✗" de la tarjeta.
-  Widget _badge(String etiqueta, bool ok) {
-    final Color color = ok ? Colors.green.shade700 : AppColors.of(context).textMuted;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(ok ? Icons.check : Icons.close, size: 12, color: color),
-          const SizedBox(width: 3),
-          Text(etiqueta, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: color)),
-        ],
-      ),
-    );
-  }
-
-  Widget _fila(Map<String, dynamic> r, bool admin) {
+  Widget _fila(Liquidacion l, bool admin) {
     final c = AppColors.of(context);
-    final v = r['vehiculos'] is Map ? Map<String, dynamic>.from(r['vehiculos'] as Map) : <String, dynamic>{};
-    final nombre = '${v['marca'] ?? ''} ${v['modelo'] ?? ''}'.trim();
-    final placa = (v['placa'] ?? '').toString();
-    final estado = (r['estado'] ?? 'Pendiente').toString();
-    final foto = v['foto'];
-    final fotoUrl = foto is String
-        ? foto
-        : foto is Map
-            ? (foto['url'] ?? foto['path'] ?? '').toString()
-            : '';
-    final destino = () {
-      final u = (r['ubicacion'] ?? '').toString();
-      if (u.isEmpty) return 'Sin destino';
-      final p = u.split('|');
-      return p.length > 1 ? p[1] : u;
-    }();
+    final color = _colorEstado(l.estado);
+    final fecha = '${l.fecha.day.toString().padLeft(2, '0')}/${l.fecha.month.toString().padLeft(2, '0')}/${l.fecha.year}';
     return Material(
       color: c.surface,
       borderRadius: BorderRadius.circular(14),
@@ -412,16 +383,22 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
       child: InkWell(
         onTap: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => ReservationDetailScreen(reservation: r, soloLectura: true)),
+          MaterialPageRoute(
+            builder: (_) => LiquidacionDetailScreen(liquidacionId: l.id, soloLectura: true),
+          ),
         ),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: CachedImage(fotoUrl, bucket: 'flotilla', width: 64, height: 64,
-                    fallbackIcon: Icons.directions_car),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.receipt_long, color: color),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -431,58 +408,55 @@ class _ReservasHistorialScreenState extends State<ReservasHistorialScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(nombre.isEmpty ? 'Vehículo' : nombre,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontWeight: FontWeight.bold, color: c.textPrimary)),
+                          child: Text(
+                            l.proyectoNombre == null || l.proyectoNombre == 'Sin Proyecto'
+                                ? (l.descripcion?.isNotEmpty == true ? l.descripcion! : 'Sin proyecto')
+                                : l.proyectoNombre!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontWeight: FontWeight.bold, color: c.textPrimary),
+                          ),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: _colorEstado(estado).withValues(alpha: 0.12),
+                            color: color.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: Text(estado.toUpperCase(),
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _colorEstado(estado))),
+                          child: Text(l.estadoLabel.toUpperCase(),
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 2),
-                    Text('$placa · $destino',
-                        maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: c.textSecondary)),
+                    Text(
+                      '$fecha · ${l.tipo}${l.personalIncluido?.isNotEmpty == true ? ' · ${l.personalIncluido}' : ''}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: c.textSecondary),
+                    ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.calendar_today, size: 12, color: c.textMuted),
-                        const SizedBox(width: 4),
-                        Text('${_fecha(r['fecha_salida'])} → ${_fecha(r['fecha_regreso'])}',
-                            style: TextStyle(fontSize: 11, color: c.textMuted)),
+                        Text(_monto(l.totalGeneral),
+                            style: TextStyle(fontWeight: FontWeight.bold, color: c.textPrimary)),
+                        if (l.facturas != null) ...[
+                          const SizedBox(width: 8),
+                          Text('${l.facturas!.length} factura(s)', style: TextStyle(fontSize: 11, color: c.textMuted)),
+                        ],
+                        if (admin && l.empleadoNombre != null) ...[
+                          const Spacer(),
+                          Icon(Icons.person, size: 12, color: c.textMuted),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(l.empleadoCompleto,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 11, color: c.textSecondary)),
+                          ),
+                        ],
                       ],
                     ),
-                    if (!_desdeLocal)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Row(
-                          children: [
-                            _badge('Salida', _registros[r['id'].toString()]?['salida'] == true),
-                            const SizedBox(width: 6),
-                            _badge('Entrada', _registros[r['id'].toString()]?['entrada'] == true),
-                          ],
-                        ),
-                      ),
-                    if (admin && _empleadosNombre[r['empleado_id']?.toString()] != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Row(
-                          children: [
-                            Icon(Icons.person, size: 12, color: c.textMuted),
-                            const SizedBox(width: 4),
-                            Text(_empleadosNombre[r['empleado_id'].toString()]!,
-                                style: TextStyle(fontSize: 11, color: c.textSecondary)),
-                          ],
-                        ),
-                      ),
                   ],
                 ),
               ),

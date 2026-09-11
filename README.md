@@ -235,6 +235,7 @@ Liquidación de gastos con facturas fotografiadas. Se crea vía `create_liquidac
 - **Sin conexión** se puede crear una liquidación completa (facturas y fotos): queda pendiente en la lista y se sube sola. El personal incluido y los últimos 100 proyectos están en caché para el formulario.
 - Las liquidaciones del último mes, con facturas, viven en SQLite: la lista y el detalle abren sin red.
 - Los **comprobantes se ven dentro de la app** (zoom) y quedan en caché. **Exportar PDF** arma datos, facturas, totales y una página por comprobante, y abre el menú de compartir.
+- **Historial de liquidaciones** (botón junto al "+"): búsqueda por descripción, personal, proyecto, tarjeta, tipo, estado y fechas, en modo solo lectura. Usuario normal ve las suyas; admin ve todas con el nombre del empleado.
 - Después de aprobada o rechazada el empleado puede **solicitar corrección**.
 - El resultado llega por dos vías: notificación local vía **Realtime** y push **FCM** desde el servidor.
 - Detalle en [docs/04-viaticos.md](docs/04-viaticos.md).
@@ -259,7 +260,7 @@ Inspección de un vehículo de la flotilla contra una rúbrica de ítems por cat
 
 ### Chat CRM
 
-Pestaña **Chat** (solo roles comerciales y admin, o con `chat_role`) con las conversaciones de WhatsApp del negocio, estilo WhatsApp: lista con último mensaje y no leídos, conversación con burbujas y estados. Los datos vienen de la API de **Wapi** (no de Supabase); se configura en Perfil → Chat CRM. Responder desde la app está construido y se activa con `--dart-define=WAPI_ENVIO=true`. Detalle en [docs/12-chat-crm.md](docs/12-chat-crm.md).
+Pestaña **Chat** (solo roles comerciales y admin, o con `chat_role`) con las conversaciones de WhatsApp del negocio, estilo WhatsApp: lista con último mensaje y no leídos, conversación con burbujas y estados. Lee el esquema **`waba_crm`** de Supabase (admin ve todo; los demás solo sus conversaciones asignadas). **Pendiente de conectar**: falta habilitar el acceso de la app a ese esquema en Supabase; se activa con `--dart-define=WABA_CHAT=true`. Responder desde la app está construido y se activa con `WABA_ENVIO=true`. Detalle en [docs/12-chat-crm.md](docs/12-chat-crm.md).
 
 ### Administración
 
@@ -382,7 +383,7 @@ lib/
 │   ├── ruta_pdf_service.dart · liquidacion_pdf_service.dart · visita_pdf_service.dart
 │   ├── admin_service.dart · auditoria_service.dart · mfa_service.dart
 │   ├── theme_controller.dart        Modo claro / oscuro / sistema (preferencia persistida).
-│   ├── chat_service.dart            Chat CRM: API de Wapi (WhatsApp) + ChatConfig.
+│   ├── chat_service.dart            Chat CRM sobre Supabase waba_crm (pendiente de conectar).
 │   ├── notificaciones_service.dart  Centro de notificaciones (tabla notificaciones).
 │   ├── tracking_service.dart        Stream GPS → visitas.ops_tracking.
 │   └── app_logger.dart              Registro de actividad (app_log).
@@ -393,9 +394,9 @@ lib/
 │   ├── flotilla_screen.dart · reservation_*.dart · vehicle_register_screen.dart · trip_nav_screen.dart
 │   ├── viaticos_screen.dart · liquidacion_*.dart · comprobante_viewer_screen.dart
 │   ├── visitas_screen.dart · visita_*.dart · map_picker_screen.dart
-│   ├── chat_list_screen.dart · chat_detail_screen.dart   Pestaña Chat CRM (Wapi).
+│   ├── chat_list_screen.dart · chat_detail_screen.dart   Pestaña Chat CRM (Supabase waba_crm).
 │   ├── notifications_screen.dart    Campana del Dashboard.
-│   ├── reservas_historial_screen.dart
+│   ├── reservas_historial_screen.dart · liquidaciones_historial_screen.dart
 │   ├── backup_settings_screen.dart  Perfil → Copias de seguridad.
 │   ├── app_log_screen.dart · log_settings_screen.dart
 │   ├── auditorias/
@@ -494,6 +495,6 @@ La carpeta [docs/](docs/README.md) contiene la documentación técnica completa 
 | [09 · Modelo de datos](docs/09-modelo-de-datos.md) | Tablas, RPCs, buckets, endpoints, estados, base local |
 | [10 · Observaciones](docs/10-observaciones.md) | Deuda técnica y hallazgos |
 | [11 · Registro de actividad](docs/11-registro-de-actividad.md) | Log local, niveles, visor y exportación |
-| [12 · Chat CRM y notificaciones](docs/12-chat-crm.md) | Pestaña de chat WhatsApp (Wapi), centro de notificaciones |
+| [12 · Chat CRM y notificaciones](docs/12-chat-crm.md) | Pestaña de chat WhatsApp (waba_crm), centro de notificaciones |
 
 Repositorio del backend web y API PHP: `MecsaOPS`.

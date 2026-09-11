@@ -165,6 +165,9 @@ class AppTheme {
       useMaterial3: true,
       brightness: b,
       colorScheme: scheme,
+      // Muchas pantallas usan Theme.of(context).primaryColor; en oscuro Flutter
+      // lo deja en gris casi negro, así que se fija al primario real.
+      primaryColor: primary,
       scaffoldBackgroundColor: c.background,
       canvasColor: c.surface,
       dividerColor: c.border,

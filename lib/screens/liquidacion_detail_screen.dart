@@ -19,8 +19,11 @@ import '../utils/num_parse.dart';
 
 class LiquidacionDetailScreen extends StatefulWidget {
   final String liquidacionId;
+  /// Historial: solo información (datos, facturas, comprobantes, PDF), sin
+  /// editar, eliminar, agregar facturas, corregir ni comentar.
+  final bool soloLectura;
 
-  const LiquidacionDetailScreen({super.key, required this.liquidacionId});
+  const LiquidacionDetailScreen({super.key, required this.liquidacionId, this.soloLectura = false});
 
   @override
   State<LiquidacionDetailScreen> createState() =>
@@ -156,7 +159,7 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
     }
   }
 
-  bool get _editable => liquidacion?.estado == 'pendiente';
+  bool get _editable => !widget.soloLectura && liquidacion?.estado == 'pendiente';
 
   Future<void> _abrirFormFactura({Factura? existente}) async {
     final guardado = await showModalBottomSheet<bool>(
@@ -257,7 +260,7 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
                   tooltip: 'Exportar PDF',
                   onPressed: _exportarPdf,
                 ),
-                if (liquidacion!.estado == 'pendiente')
+                if (!widget.soloLectura && liquidacion!.estado == 'pendiente')
                   IconButton(
                     icon: const Icon(Icons.delete),
                     tooltip: 'Eliminar',
@@ -265,7 +268,8 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
                   ),
                 // Botón "Solicitar corrección" solo si NO está pendiente
                 // (aún editable) y NO tiene ya una solicitud abierta
-                if (liquidacion!.estado != 'pendiente' &&
+                if (!widget.soloLectura &&
+                    liquidacion!.estado != 'pendiente' &&
                     (liquidacion!.solicitudCorreccion == null ||
                         liquidacion!.solicitudCorreccion!.isEmpty))
                   IconButton(
@@ -481,6 +485,7 @@ class _LiquidacionDetailScreenState extends State<LiquidacionDetailScreen> {
             ..._comentarios.map(_buildComentarioItem),
           const SizedBox(height: 8),
           // Caja para agregar comentario (disponible en cualquier estado)
+          if (!widget.soloLectura)
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [

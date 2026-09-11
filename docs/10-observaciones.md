@@ -71,7 +71,7 @@ Hallazgos encontrados al leer el código para escribir esta documentación. No s
 ## 10.7 Cambios aplicados el 11/09/2026 (segunda tanda)
 
 - Modo claro/oscuro con `AppColors` y `ThemeController`; banners y avisos adaptativos.
-- Pestaña **Chat CRM** (Wapi) para roles comerciales/admin, en lugar del botón que abría la web con SSO por `app_uid` (ese puente sigue existiendo en el servidor; ver S1/S2). Envío construido pero apagado (`WAPI_ENVIO`).
+- Pestaña **Chat CRM** sobre Supabase `waba_crm` (pendiente de conectar: el rol autenticado no tiene permiso de lectura) para roles comerciales/admin, en lugar del botón que abría la web con SSO por `app_uid` (ese puente sigue existiendo en el servidor; ver S1/S2). Envío construido pero apagado (`WABA_ENVIO`).
 - Campana del Dashboard funcional: centro de notificaciones en SQLite (`notificaciones`, v5).
 - Historial de reservas con búsqueda (propias o todas si admin).
 - Auditorías sin conexión (cola `auditoria` con fotos) y catálogos en caché.

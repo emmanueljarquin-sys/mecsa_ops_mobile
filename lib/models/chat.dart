@@ -1,5 +1,5 @@
 // =============================================================================
-// chat.dart — Modelos del chat CRM (Wapi / WhatsApp)
+// chat.dart — Modelos del chat CRM (WhatsApp, esquema waba_crm)
 // =============================================================================
 
 /// Un mensaje de WhatsApp (entrante o saliente).
@@ -69,8 +69,7 @@ class ChatMensaje {
   static const _dirs = ['inbound', 'outbound'];
   static const _estados = ['pending', 'sent', 'delivered', 'read', 'failed', 'received'];
 
-  /// Acepta los dos formatos de Wapi: el historial por contacto (enums en
-  /// texto, campos en camelCase) y la lista de la cuenta (enums numéricos).
+  /// Acepta enums en texto o numéricos y campos en camelCase (caché/JSON).
   factory ChatMensaje.fromJson(Map<String, dynamic> j) {
     String s(Object? o) => (o ?? '').toString();
     String enumStr(Object? v, List<String> nombres) {
@@ -119,6 +118,12 @@ class ChatMensaje {
 /// Un chat (contacto de WhatsApp) en la lista.
 class ChatResumen {
   final String waId;
+  /// Id de `waba_crm.conversations` (null si viene de una fuente sin id).
+  final String? conversacionId;
+  /// Empleado/agente responsable (conversations.assigned_to).
+  final String? asignadoA;
+  /// open | pending | closed (según el CRM).
+  final String? estado;
   final String nombre;
   final String? empresa;
   final List<String> etiquetas;
@@ -131,6 +136,9 @@ class ChatResumen {
 
   const ChatResumen({
     required this.waId,
+    this.conversacionId,
+    this.asignadoA,
+    this.estado,
     required this.nombre,
     this.empresa,
     this.etiquetas = const [],
@@ -187,6 +195,9 @@ class ChatResumen {
 
   factory ChatResumen.fromJson(Map<String, dynamic> j) => ChatResumen(
         waId: (j['waId'] ?? '').toString(),
+        conversacionId: j['conversacionId']?.toString(),
+        asignadoA: j['asignadoA']?.toString(),
+        estado: j['estado']?.toString(),
         nombre: (j['nombre'] ?? j['waId'] ?? '').toString(),
         empresa: j['empresa']?.toString(),
         etiquetas: (j['etiquetas'] as List? ?? []).map((e) => e.toString()).toList(),
@@ -203,6 +214,9 @@ class ChatResumen {
 
   Map<String, dynamic> toJson() => {
         'waId': waId,
+        'conversacionId': conversacionId,
+        'asignadoA': asignadoA,
+        'estado': estado,
         'nombre': nombre,
         'empresa': empresa,
         'etiquetas': etiquetas,

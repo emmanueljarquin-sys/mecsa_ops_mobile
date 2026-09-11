@@ -15,8 +15,10 @@ import 'trip_nav_screen.dart';
 
 class ReservationDetailScreen extends StatelessWidget {
   final Map<String, dynamic> reservation;
+  /// Historial: solo información (reserva, salida y entrada), sin acciones.
+  final bool soloLectura;
 
-  const ReservationDetailScreen({super.key, required this.reservation});
+  const ReservationDetailScreen({super.key, required this.reservation, this.soloLectura = false});
 
   @override
   Widget build(BuildContext context) {
@@ -158,7 +160,8 @@ class ReservationDetailScreen extends StatelessWidget {
                   ],
 
                   // --- Botón Cancelar Reserva: solo si futura y aún cancelable ---
-                  if ((estado == 'PENDIENTE' || estado.contains('APROB')) &&
+                  if (!soloLectura &&
+                      (estado == 'PENDIENTE' || estado.contains('APROB')) &&
                       _puedeCancelar(reservation)) ...[
                     _buildCancelButton(context),
                     const SizedBox(height: 24),
@@ -627,6 +630,52 @@ class ReservationDetailScreen extends StatelessWidget {
     );
   }
 
+  /// Resumen de solo lectura cuando falta la salida o la entrada.
+  Widget _estadoRegistrosSoloLectura(
+      BuildContext context, Map<String, dynamic> regSalida, Map<String, dynamic> regEntrada) {
+    final c = AppColors.of(context);
+    Widget fila(String etiqueta, Map<String, dynamic> reg) {
+      final ok = reg.isNotEmpty;
+      final km = reg['kilometraje'];
+      final fecha = DateTime.tryParse(reg['fecha_registro']?.toString() ?? '');
+      final detalle = ok
+          ? [
+              if (km != null) '$km km',
+              if (fecha != null)
+                '${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')} ${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}',
+              if (reg['_pendiente'] == true) 'pendiente de subir',
+            ].join(' · ')
+          : 'No registrada';
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Icon(ok ? Icons.check_circle : Icons.cancel, size: 20, color: ok ? Colors.green : c.textMuted),
+            const SizedBox(width: 10),
+            Text(etiqueta, style: TextStyle(fontWeight: FontWeight.w600, color: c.textPrimary)),
+            const Spacer(),
+            Text(detalle, style: TextStyle(fontSize: 12, color: ok ? c.textSecondary : c.textMuted)),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.border),
+      ),
+      child: Column(
+        children: [
+          fila('Salida', regSalida),
+          Divider(height: 1, color: c.border),
+          fila('Entrada', regEntrada),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRegistrationButtons(BuildContext context) {
     final reservaId = reservation['id'].toString();
     // Escuchar la cola: cuando una operación sube, se reconstruye.
@@ -667,6 +716,11 @@ class ReservationDetailScreen extends StatelessWidget {
         final hasEntrada = regEntrada.isNotEmpty;
         final salidaPendiente = regSalida['_pendiente'] == true;
         final entradaPendiente = regEntrada['_pendiente'] == true;
+
+        // Historial: solo informar qué se registró, sin botones de acción.
+        if (soloLectura && !(hasSalida && hasEntrada)) {
+          return _estadoRegistrosSoloLectura(context, regSalida, regEntrada);
+        }
 
         if (!hasSalida) {
           return _buildActionButton(
@@ -877,6 +931,7 @@ class ReservationDetailScreen extends StatelessWidget {
                 Row(
                   children: [
                     if ((regSalida['solicitud_correccion'] ?? '').toString().isEmpty)
+                      if (!soloLectura)
                       Expanded(
                         child: OutlinedButton.icon(
                           icon: const Icon(Icons.edit_note, size: 18, color: Colors.orange),
@@ -906,6 +961,7 @@ class ReservationDetailScreen extends StatelessWidget {
                         (regEntrada['solicitud_correccion'] ?? '').toString().isEmpty)
                       const SizedBox(width: 8),
                     if ((regEntrada['solicitud_correccion'] ?? '').toString().isEmpty)
+                      if (!soloLectura)
                       Expanded(
                         child: OutlinedButton.icon(
                           icon: const Icon(Icons.edit_note, size: 18, color: Colors.orange),

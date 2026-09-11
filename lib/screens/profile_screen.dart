@@ -9,7 +9,6 @@ import 'backup_settings_screen.dart';
 import '../services/sync_service.dart';
 import '../services/theme_controller.dart';
 import '../services/chat_service.dart';
-import '../utils/mensajes_error.dart';
 import '../services/offline_service.dart';
 
 import 'dart:io';
@@ -40,78 +39,6 @@ class ProfileScreen extends StatelessWidget {
     } catch (e) {
       debugPrint("Error picking image: $e");
     }
-  }
-
-  /// Diálogo para configurar el acceso a Wapi (URL base, id de cuenta y
-  /// clave X-Api-Key). Se guarda en el teléfono; permite probar la conexión.
-  Future<void> _configurarChat(BuildContext context, ChatConfig cfg) async {
-    final url = TextEditingController(text: cfg.baseUrl);
-    final cuenta = TextEditingController(text: cfg.accountId);
-    final clave = TextEditingController(text: cfg.apiKey);
-    String? resultado;
-    bool probando = false;
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setD) => AlertDialog(
-          title: const Text('Chat CRM · Wapi'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: url,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(labelText: 'URL base', hintText: 'https://wapi.grupomecsa.net'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: cuenta,
-                  decoration: const InputDecoration(labelText: 'Id de cuenta de WhatsApp (GUID)'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: clave,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Clave de API (X-Api-Key)'),
-                ),
-                if (resultado != null) ...[
-                  const SizedBox(height: 12),
-                  Text(resultado!, style: const TextStyle(fontSize: 12)),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: probando
-                  ? null
-                  : () async {
-                      setD(() => probando = true);
-                      await cfg.guardar(baseUrl: url.text, accountId: cuenta.text, apiKey: clave.text);
-                      try {
-                        final r = await ChatService.instance.probar();
-                        setD(() => resultado = r);
-                      } catch (e) {
-                        setD(() => resultado = mensajeError(e, accion: 'conectar con el chat'));
-                      } finally {
-                        setD(() => probando = false);
-                      }
-                    },
-              child: Text(probando ? 'Probando…' : 'Probar'),
-            ),
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar')),
-            ElevatedButton(
-              onPressed: () async {
-                await cfg.guardar(baseUrl: url.text, accountId: cuenta.text, apiKey: clave.text);
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: const Text('Guardar'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   void _showPickerOptions(BuildContext context) {
@@ -341,18 +268,14 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              Consumer<ChatConfig>(
-                builder: (context, cfg, _) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.chat_bubble_outline,
-                      color: cfg.configurado ? const Color(0xFF25D366) : Colors.orange),
-                  title: const Text("Conexión con WhatsApp (Wapi)"),
-                  subtitle: Text(cfg.configurado
-                      ? 'Configurado · ${Uri.tryParse(cfg.baseUrl)?.host ?? cfg.baseUrl}'
-                      : 'Sin configurar: URL, cuenta y clave de la API'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _configurarChat(context, cfg),
-                ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.chat_bubble_outline,
+                    color: ChatConfig.conectado ? const Color(0xFF25D366) : Colors.orange),
+                title: const Text("Chat CRM (WhatsApp)"),
+                subtitle: Text(ChatConfig.conectado
+                    ? 'Conectado a waba_crm · admin ve todo, los demás sus asignados'
+                    : 'Pendiente de conectar con waba_crm (falta habilitar acceso en Supabase)'),
               ),
             ],
 
