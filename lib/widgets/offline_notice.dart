@@ -26,10 +26,13 @@ class OfflineNotice extends StatelessWidget {
   Widget build(BuildContext context) {
     final online = context.watch<ConnectivityService>().isOnline;
     if (online) return const SizedBox.shrink();
-    final Color fondo = permiteContinuar ? Colors.orange.shade50 : Colors.red.shade50;
-    final Color borde = permiteContinuar ? Colors.orange.shade300 : Colors.red.shade200;
-    final Color color = permiteContinuar ? Colors.orange.shade900 : Colors.red.shade900;
-    final Color icono = permiteContinuar ? Colors.orange.shade800 : Colors.red.shade700;
+    final bool dark = Theme.of(context).brightness == Brightness.dark;
+    final MaterialColor base = permiteContinuar ? Colors.orange : Colors.red;
+    // En oscuro: fondo translúcido y texto claro; en claro: pastel y texto oscuro.
+    final Color fondo = dark ? base.withValues(alpha: 0.18) : base.shade50;
+    final Color borde = dark ? base.shade700 : (permiteContinuar ? base.shade300 : base.shade200);
+    final Color color = dark ? base.shade100 : base.shade900;
+    final Color icono = dark ? base.shade300 : (permiteContinuar ? base.shade800 : base.shade700);
     return Container(
       margin: margin,
       padding: const EdgeInsets.all(12),

@@ -8,6 +8,8 @@
 // =============================================================================
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'cache_service.dart';
+import 'connectivity_service.dart';
 import '../models/auditoria.dart';
 
 class AuditoriaService {
@@ -16,25 +18,49 @@ class AuditoriaService {
 
   // ── Catálogo de rúbrica (ítems activos, ordenados) ──────────────────────
   static Future<List<RubricaItem>> getRubrica() async {
-    final rows = await _sb
-        .schema('flotilla')
-        .from('auditoria_rubrica')
-        .select('*')
-        .eq('activo', true)
-        .order('orden', ascending: true);
-    return (rows as List)
-        .map((r) => RubricaItem.fromJson(Map<String, dynamic>.from(r)))
-        .toList();
+    Future<List<RubricaItem>> deCache() async =>
+        ((await cache.get('aud_rubrica'))?.asList() ?? [])
+            .map(RubricaItem.fromJson)
+            .toList();
+    if (!await connectivity.checkInternet()) return deCache();
+    try {
+      final rows = await _sb
+          .schema('flotilla')
+          .from('auditoria_rubrica')
+          .select('*')
+          .eq('activo', true)
+          .order('orden', ascending: true)
+          .timeout(const Duration(seconds: 20));
+      final list = (rows as List).map((r) => Map<String, dynamic>.from(r)).toList();
+      await cache.put('aud_rubrica', list);
+      return list.map(RubricaItem.fromJson).toList();
+    } catch (_) {
+      final c = await deCache();
+      if (c.isEmpty) rethrow;
+      return c;
+    }
   }
 
   // ── Vehículos (para elegir cuál auditar) ────────────────────────────────
   static Future<List<Map<String, dynamic>>> getVehiculos() async {
-    final rows = await _sb
-        .schema('flotilla')
-        .from('vehiculos')
-        .select('id, marca, modelo, placa, type, km_actual')
-        .order('marca', ascending: true);
-    return (rows as List).map((r) => Map<String, dynamic>.from(r)).toList();
+    Future<List<Map<String, dynamic>>> deCache() async =>
+        (await cache.get('aud_vehiculos'))?.asList() ?? [];
+    if (!await connectivity.checkInternet()) return deCache();
+    try {
+      final rows = await _sb
+          .schema('flotilla')
+          .from('vehiculos')
+          .select('id, marca, modelo, placa, type, km_actual')
+          .order('marca', ascending: true)
+          .timeout(const Duration(seconds: 20));
+      final list = (rows as List).map((r) => Map<String, dynamic>.from(r)).toList();
+      await cache.put('aud_vehiculos', list);
+      return list;
+    } catch (_) {
+      final c = await deCache();
+      if (c.isEmpty) rethrow;
+      return c;
+    }
   }
 
   // ── Subir fotos de la auditoría ─────────────────────────────────────────
@@ -86,13 +112,33 @@ class AuditoriaService {
     required String auditorId,
     bool verTodas = false,
   }) async {
+    final cacheKey = 'aud_lista_${verTodas ? 'todas' : auditorId}';
+    Future<List<Auditoria>> deCache() async {
+      final hit = await cache.get(cacheKey);
+      final rows = hit?.asList() ?? [];
+      final vehs = (await cache.get('aud_vehiculos'))?.asList() ?? [];
+      _vehCache.addEntries(vehs.map((v) => MapEntry(v['id'].toString(), v)));
+      return rows.map(Auditoria.fromJson).toList();
+    }
+    if (!await connectivity.checkInternet()) return deCache();
+    try {
+      return await _getMisAuditoriasRemoto(auditorId, verTodas, cacheKey);
+    } catch (_) {
+      final c = await deCache();
+      if (c.isEmpty) rethrow;
+      return c;
+    }
+  }
+
+  static Future<List<Auditoria>> _getMisAuditoriasRemoto(
+      String auditorId, bool verTodas, String cacheKey) async {
     var q = _sb.schema('flotilla').from('auditorias').select('*');
     if (!verTodas) q = q.eq('auditor_id', auditorId);
     final rows = await q.order('fecha_auditoria', ascending: false).limit(100);
 
-    final list = (rows as List)
-        .map((r) => Auditoria.fromJson(Map<String, dynamic>.from(r)))
-        .toList();
+    final rawList = (rows as List).map((r) => Map<String, dynamic>.from(r)).toList();
+    await cache.put(cacheKey, rawList);
+    final list = rawList.map(Auditoria.fromJson).toList();
     if (list.isEmpty) return list;
 
     // Hidratar vehículo (marca/placa) en lote

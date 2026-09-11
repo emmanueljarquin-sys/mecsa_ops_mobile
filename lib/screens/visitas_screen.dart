@@ -108,7 +108,7 @@ class _VisitasScreenState extends State<VisitasScreen> {
   Widget _buildHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
-      color: Colors.white,
+      color: AppColors.of(context).surface,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [

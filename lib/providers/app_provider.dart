@@ -21,6 +21,7 @@ import '../utils/mensajes_error.dart';
 import '../services/reservas_local.dart';
 import '../services/vehiculos_local.dart';
 import '../services/imagenes_cache.dart';
+import '../services/notificaciones_service.dart';
 import '../services/sync_service.dart';
 import '../services/tracking_service.dart';
 
@@ -444,9 +445,24 @@ class AppProvider extends ChangeNotifier {
     _init();
   }
 
+  /// El chat CRM (WhatsApp) solo lo ven roles comerciales/admin o quien tenga
+  /// `chat_role` asignado en Empleados.
+  bool get puedeVerChat {
+    final emp = currentEmployeeData;
+    if (emp == null) return false;
+    final r = (emp['rol'] ?? '').toString().toLowerCase();
+    final chatRole = (emp['chat_role'] ?? '').toString().trim();
+    return chatRole.isNotEmpty ||
+        r.contains('admin') ||
+        r.contains('vendedor') ||
+        r.contains('ventas') ||
+        r.contains('asesor');
+  }
+
   void _init() {
     log.setUser(user?.email);
     cache.setScope(user?.email);
+    NotificacionesService.instance.setUsuario(user?.email);
     log.i('auth', 'Provider iniciado', data: {
       'sesionPersistida': user != null,
       'email': user?.email,
@@ -463,6 +479,7 @@ class AppProvider extends ChangeNotifier {
         sessionExpired = false;
         _sesionInvalidada = false;
         cache.setScope(data.session?.user.email ?? user?.email);
+        NotificacionesService.instance.setUsuario(data.session?.user.email ?? user?.email);
         await _loadFromCache();
         fetchData();
       } else if (data.event == AuthChangeEvent.tokenRefreshed) {
@@ -535,6 +552,15 @@ class AppProvider extends ChangeNotifier {
     final corriendo = SyncService.instance.isRunning;
     if (_syncEstabaCorriendo && !corriendo && user != null) {
       _loadFromCache().then((_) => refreshSilent());
+      final r = SyncService.instance.lastResult;
+      if (r != null) {
+        NotificacionesService.instance.agregar(
+          titulo: 'Copia de seguridad',
+          cuerpo: r,
+          tipo: 'sync',
+          clave: 'sync_${SyncService.instance.lastRun?.millisecondsSinceEpoch ?? 0}',
+        );
+      }
     }
     _syncEstabaCorriendo = corriendo;
   }
@@ -550,6 +576,32 @@ class AppProvider extends ChangeNotifier {
   }
 
   void _onOperacionOfflineSubida(String type, Map<String, dynamic> op) {
+    const nombres = {
+      'registro_vehiculo': 'Registro de vehículo',
+      'liquidacion': 'Liquidación',
+      'factura': 'Factura',
+      'visita_crear': 'Visita',
+      'visita_inicio': 'Inicio de visita',
+      'visita_waypoints': 'Recorrido de visita',
+      'visita_fin': 'Cierre de visita',
+      'auditoria': 'Auditoría de vehículo',
+    };
+    NotificacionesService.instance.agregar(
+      titulo: '${nombres[type] ?? type} sincronizado',
+      cuerpo: 'Se guardó sin conexión y ya se subió al servidor.',
+      tipo: type.startsWith('visita')
+          ? 'visita'
+          : type == 'liquidacion' || type == 'factura'
+              ? 'liquidacion'
+              : type == 'registro_vehiculo'
+                  ? 'reserva'
+                  : 'sync',
+      data: {
+        if (op['remoteId'] != null) 'remote_id': op['remoteId'].toString(),
+        if ((op['record'] as Map?)?['reserva_id'] != null)
+          'reserva_id': (op['record'] as Map)['reserva_id'].toString(),
+      },
+    );
     switch (type) {
       case 'liquidacion':
       case 'factura':
@@ -563,6 +615,8 @@ class AppProvider extends ChangeNotifier {
         break;
       case 'registro_vehiculo':
         refreshSilent();
+        break;
+      case 'auditoria':
         break;
     }
   }
@@ -617,6 +671,12 @@ class AppProvider extends ChangeNotifier {
                 config['message'] ?? "Hay una nueva versión disponible.";
             _updateUrl = config['update_url'];
             _forceUpdate = config['force_update'] ?? false;
+            NotificacionesService.instance.agregar(
+              titulo: 'Nueva versión disponible',
+              cuerpo: _notificationMessage ?? 'Actualiza la app desde Play Store.',
+              tipo: 'version',
+              clave: 'version_$minBuildNumber',
+            );
             notifyListeners();
           }
         }
@@ -2356,6 +2416,15 @@ class AppProvider extends ChangeNotifier {
                 _notificationMessage =
                     "Tu liquidación ha sido ${newVal['estado']}";
                 _showLocalNotification("IMPORTANTE", _notificationMessage!);
+                NotificacionesService.instance.agregar(
+                  titulo: newVal['estado'] == 'aprobada'
+                      ? 'Liquidación aprobada'
+                      : 'Liquidación rechazada',
+                  cuerpo: 'Tu liquidación del ${newVal['fecha'] ?? ''} fue ${newVal['estado']}.'
+                      '${newVal['respuesta_admin'] != null ? ' ${newVal['respuesta_admin']}' : ''}',
+                  tipo: 'liquidacion',
+                  data: {'liquidacion_id': newVal['id']?.toString()},
+                );
                 _fetchViaticos();
                 notifyListeners();
               }

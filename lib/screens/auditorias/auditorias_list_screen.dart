@@ -3,6 +3,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/mensajes_error.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../../services/offline_service.dart';
 import '../../providers/app_provider.dart';
 import '../../models/auditoria.dart';
 import '../../services/auditoria_service.dart';
@@ -76,20 +77,52 @@ class _AuditoriasListScreenState extends State<AuditoriasListScreen> {
           if (ok == true) _load();
         },
       ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? _errorView()
-                : _auditorias.isEmpty
-                    ? _emptyView()
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-                        itemCount: _auditorias.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) => _card(_auditorias[i]),
-                      ),
+      body: Column(
+        children: [
+          // Auditorías guardadas sin conexión (en la cola offline).
+          Consumer<OfflineService>(
+            builder: (context, off, _) {
+              final n = off.pendientes.where((o) => o['type'] == 'auditoria').length;
+              if (n == 0) return const SizedBox.shrink();
+              return Container(
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.orange.withValues(alpha: 0.18) : Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.orange.shade300),
+                ),
+                child: Row(children: [
+                  Icon(Icons.cloud_upload_outlined, color: Colors.orange.shade800),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '$n auditoría(s) guardada(s) sin conexión, pendiente(s) de subir.',
+                      style: TextStyle(color: Theme.of(context).brightness == Brightness.dark ? Colors.orange.shade100 : Colors.orange.shade900, fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                  ),
+                ]),
+              );
+            },
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _load,
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                      ? _errorView()
+                      : _auditorias.isEmpty
+                          ? _emptyView()
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+                              itemCount: _auditorias.length,
+                              separatorBuilder: (_, _) => const SizedBox(height: 10),
+                              itemBuilder: (_, i) => _card(_auditorias[i]),
+                            ),
+            ),
+          ),
+        ],
       ),
     );
   }

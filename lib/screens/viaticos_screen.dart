@@ -269,7 +269,7 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
                       SizedBox(height: 4),
                       Text(
                         'Gestión de viáticos',
-                        style: TextStyle(fontSize: 14, color: Colors.grey),
+                        style: TextStyle(fontSize: 14, color: AppColors.of(context).textSecondary),
                       ),
                     ],
                   ),
@@ -423,12 +423,12 @@ class _ViaticosScreenState extends State<ViaticosScreen> {
                                       return Container(
                                         padding: const EdgeInsets.all(12),
                                         decoration: BoxDecoration(
-                                          color: Colors.blueGrey.shade50,
+                                          color: AppColors.of(context).surfaceVariant,
                                           borderRadius: BorderRadius.circular(10),
                                         ),
                                         child: Row(
                                           children: [
-                                            Icon(Icons.wifi_off, size: 18, color: Colors.blueGrey.shade700),
+                                            Icon(Icons.wifi_off, size: 18, color: AppColors.of(context).textSecondary),
                                             const SizedBox(width: 8),
                                             const Expanded(
                                               child: Text(
@@ -490,7 +490,7 @@ class _FilterChip extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              color: isSelected ? Theme.of(context).primaryColor : Colors.white,
+              color: isSelected ? Theme.of(context).primaryColor : AppColors.of(context).surface,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: isSelected
@@ -501,7 +501,7 @@ class _FilterChip extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : const Color(0xFF495057),
+                color: isSelected ? Colors.white : AppColors.of(context).textSecondary,
                 fontWeight: FontWeight.w600,
               ),
             ),

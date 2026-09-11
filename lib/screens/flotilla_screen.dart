@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_provider.dart';
 import 'reservation_form_screen.dart';
 import 'reservation_detail_screen.dart';
+import 'reservas_historial_screen.dart';
 
 class FlotillaScreen extends StatelessWidget {
   const FlotillaScreen({super.key});
@@ -38,6 +39,15 @@ class FlotillaScreen extends StatelessWidget {
                         color: AppColors.of(context).textPrimary,
                       ),
                     ),
+                    IconButton.filledTonal(
+                      tooltip: 'Historial de reservas',
+                      icon: const Icon(Icons.history),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ReservasHistorialScreen()),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     ElevatedButton.icon(
                       onPressed: () {
                         Navigator.push(

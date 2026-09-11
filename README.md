@@ -35,7 +35,7 @@ App móvil de operaciones de **Grupo Mecsa** para el personal de campo. Reservas
 | **Backend** | Supabase (Postgres, Auth, Storage, Realtime) + API PHP de la web OPS |
 | **Datos locales** | SQLite (`sqflite`): caché, cola offline, reservas, liquidaciones, vehículos, log |
 | **Tareas de fondo** | WorkManager (copia de seguridad programada) |
-| **CI** | Codemagic: AAB automático en cada push a `main` |
+| **CI** | Codemagic: AAB de producción en cada push a `main` · GitHub Actions: APK de debug como pre-release en la rama de trabajo |
 | **Documentación técnica** | [docs/](docs/README.md) con diagramas de secuencia por módulo |
 
 ---
@@ -224,6 +224,7 @@ stateDiagram-v2
 - Las reservas del empleado se guardan en SQLite y se sobrescriben con lo que devuelve el API.
 - **Bloqueo por strikes**: con 3 o más reservas vencidas sin registrar salida, la función SQL `aplicar_bloqueo_si_corresponde` bloquea al empleado. Un admin puede desbloquear y marcar una excepción.
 - El tracking GPS inserta puntos en `visitas.ops_tracking` cada 10 metros.
+- **Historial de reservas** (botón junto a "Reservar"): búsqueda por placa, vehículo, destino, motivo, estado y fechas. Un usuario ve las suyas; un admin ve todas con el nombre del empleado.
 - Detalle en [docs/03-flotilla.md](docs/03-flotilla.md).
 
 ### Viáticos
@@ -253,7 +254,12 @@ Recorridos con el **vehículo personal** del empleado. Un wizard de tres pasos c
 Inspección de un vehículo de la flotilla contra una rúbrica de ítems por categoría. Cada ítem se marca `buen`, `mal` o `na`, con observación y fotos. La función SQL `recompute_auditoria` calcula el puntaje excluyendo los N/A.
 
 - Visible solo con permiso `auditorias`.
+- **Funciona sin conexión**: rúbrica y vehículos en caché, y la auditoría con todas sus fotos se encola y sube sola.
 - Detalle en [docs/06-auditorias.md](docs/06-auditorias.md).
+
+### Chat CRM
+
+Pestaña **Chat** (solo roles comerciales y admin, o con `chat_role`) con las conversaciones de WhatsApp del negocio, estilo WhatsApp: lista con último mensaje y no leídos, conversación con burbujas y estados. Los datos vienen de la API de **Wapi** (no de Supabase); se configura en Perfil → Chat CRM. Responder desde la app está construido y se activa con `--dart-define=WAPI_ENVIO=true`. Detalle en [docs/12-chat-crm.md](docs/12-chat-crm.md).
 
 ### Administración
 
@@ -287,13 +293,14 @@ flowchart LR
 
 | Tabla SQLite | Qué guarda |
 |--------------|------------|
-| `offline_queue` | Operaciones pendientes y subidas: registro de vehículo, liquidación, factura, visita (crear, inicio, waypoints, fin) |
+| `offline_queue` | Operaciones pendientes y subidas: registro de vehículo, liquidación, factura, visita (crear, inicio, waypoints, fin), auditoría |
 | `reservas` | Reservas del empleado, sobrescritas con el API |
 | `liquidaciones` | Último mes con facturas, más las creadas sin conexión |
 | `vehiculos` | Vehículos personales del empleado |
 | `cache` | Última respuesta de cada consulta: perfil, flotilla, proyectos, empleados, visitas, personal y proyectos del formulario de liquidación |
 | Carpetas | `offline_photos/` (fotos pendientes de subir), `imagenes/` y `comprobantes/` (fotos y comprobantes ya vistos o precargados, visibles sin red) |
 | `id_map` | Id local → id del servidor para operaciones encadenadas |
+| `notificaciones` | Historial de la campana (push, liquidaciones, sincronización, versión) |
 | `app_log` | Registro de actividad |
 
 - Una operación **nunca se borra** hasta que el servidor confirma; después queda como historial visible en Perfil → Copias de seguridad.
@@ -375,6 +382,8 @@ lib/
 │   ├── ruta_pdf_service.dart · liquidacion_pdf_service.dart · visita_pdf_service.dart
 │   ├── admin_service.dart · auditoria_service.dart · mfa_service.dart
 │   ├── theme_controller.dart        Modo claro / oscuro / sistema (preferencia persistida).
+│   ├── chat_service.dart            Chat CRM: API de Wapi (WhatsApp) + ChatConfig.
+│   ├── notificaciones_service.dart  Centro de notificaciones (tabla notificaciones).
 │   ├── tracking_service.dart        Stream GPS → visitas.ops_tracking.
 │   └── app_logger.dart              Registro de actividad (app_log).
 ├── models/                          reservation, liquidacion, auditoria
@@ -384,6 +393,9 @@ lib/
 │   ├── flotilla_screen.dart · reservation_*.dart · vehicle_register_screen.dart · trip_nav_screen.dart
 │   ├── viaticos_screen.dart · liquidacion_*.dart · comprobante_viewer_screen.dart
 │   ├── visitas_screen.dart · visita_*.dart · map_picker_screen.dart
+│   ├── chat_list_screen.dart · chat_detail_screen.dart   Pestaña Chat CRM (Wapi).
+│   ├── notifications_screen.dart    Campana del Dashboard.
+│   ├── reservas_historial_screen.dart
 │   ├── backup_settings_screen.dart  Perfil → Copias de seguridad.
 │   ├── app_log_screen.dart · log_settings_screen.dart
 │   ├── auditorias/
@@ -434,6 +446,10 @@ El build de debug **no necesita** `android/key.properties`: la firma release sol
 
 `pubspec.yaml` lleva `version: X.Y.Z+N`. El `N` es el `versionCode` de Android y es lo que compara `check_version.php`. **Cada build que suba a Play Store necesita un `N` mayor** al anterior publicado.
 
+### GitHub Actions (APK de debug)
+
+[.github/workflows/debug-apk.yml](.github/workflows/debug-apk.yml) compila el APK de **debug** en cada push a la rama `Bug-Fixing---Steven` (o a mano con *Run workflow*) y lo publica como **pre-release** en GitHub Releases con etiqueta `debug-<versión>-<rama>-<número>`. Es para pruebas internas; no reemplaza el flujo de producción. Si existe el secreto `GOOGLE_SERVICES_JSON_ANDROID` lo usa; si no, toma el `google-services.json` del repo.
+
 ### Codemagic
 
 Dos workflows en [codemagic.yaml](codemagic.yaml):
@@ -478,5 +494,6 @@ La carpeta [docs/](docs/README.md) contiene la documentación técnica completa 
 | [09 · Modelo de datos](docs/09-modelo-de-datos.md) | Tablas, RPCs, buckets, endpoints, estados, base local |
 | [10 · Observaciones](docs/10-observaciones.md) | Deuda técnica y hallazgos |
 | [11 · Registro de actividad](docs/11-registro-de-actividad.md) | Log local, niveles, visor y exportación |
+| [12 · Chat CRM y notificaciones](docs/12-chat-crm.md) | Pestaña de chat WhatsApp (Wapi), centro de notificaciones |
 
 Repositorio del backend web y API PHP: `MecsaOPS`.

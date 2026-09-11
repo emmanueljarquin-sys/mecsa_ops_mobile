@@ -161,3 +161,7 @@ sequenceDiagram
 ```
 
 Solo los usuarios con rol admin ven todas las auditorías. Un usuario con permiso `auditorias` pero sin rol admin ve únicamente las suyas.
+
+## 6.6 Sin conexión
+
+La auditoría completa se puede hacer sin internet: la rúbrica y la lista de vehículos se sirven de la caché (`aud_rubrica`, `aud_vehiculos`, se refrescan cada vez que se abre el formulario con red), el formulario muestra un banner naranja y al guardar se encola una operación `auditoria` con las fotos locales. La cola la sube en orden (fotos a `fotos_registro_vehiculos/auditorias/`, cabecera, ítems, `recompute_auditoria`) con idempotencia por id local. La lista de auditorías muestra cuántas están pendientes y, sin red, lo último cargado (`aud_lista_*`). Ver [doc 08](08-modo-offline.md).

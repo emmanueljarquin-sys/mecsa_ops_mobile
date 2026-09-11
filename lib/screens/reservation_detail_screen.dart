@@ -273,7 +273,7 @@ class ReservationDetailScreen extends StatelessWidget {
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
+                        color: Theme.of(context).brightness == Brightness.dark ? Colors.blue.withValues(alpha: 0.18) : Colors.blue.shade50,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.blue.shade100),
                       ),
@@ -600,12 +600,12 @@ class ReservationDetailScreen extends StatelessWidget {
       "${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}";
 
   /// Aviso amarillo: el registro se hizo sin conexión y está en la cola.
-  Widget _avisoPendiente(String texto) {
+  Widget _avisoPendiente(BuildContext context, String texto) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.orange.shade50,
+        color: Theme.of(context).brightness == Brightness.dark ? Colors.orange.withValues(alpha: 0.18) : Colors.orange.shade50,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Colors.orange.shade300),
       ),
@@ -617,7 +617,7 @@ class ReservationDetailScreen extends StatelessWidget {
             child: Text(
               texto,
               style: TextStyle(
-                  color: Colors.orange.shade900,
+                  color: Theme.of(context).brightness == Brightness.dark ? Colors.orange.shade100 : Colors.orange.shade900,
                   fontWeight: FontWeight.w600,
                   fontSize: 13),
             ),
@@ -691,7 +691,7 @@ class ReservationDetailScreen extends StatelessWidget {
           return Column(
             children: [
               if (salidaPendiente)
-                _avisoPendiente(
+                _avisoPendiente(context,
                     'Salida registrada sin conexión. Se subirá automáticamente cuando haya internet.'),
               _buildActionButton(
                 context,
@@ -757,7 +757,7 @@ class ReservationDetailScreen extends StatelessWidget {
 
           return Column(children: [
             if (salidaPendiente || entradaPendiente)
-              _avisoPendiente(salidaPendiente && entradaPendiente
+              _avisoPendiente(context, salidaPendiente && entradaPendiente
                   ? 'Salida y entrada registradas sin conexión. Se subirán automáticamente cuando haya internet.'
                   : salidaPendiente
                       ? 'Salida registrada sin conexión. Se subirá automáticamente cuando haya internet.'

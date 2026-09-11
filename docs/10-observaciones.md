@@ -68,7 +68,16 @@ Hallazgos encontrados al leer el código para escribir esta documentación. No s
 - Visor integrado de comprobantes con caché local; PDF de liquidación (con comprobantes) y de visita (con fotos), compartibles; fotos de visita a la galería.
 - Mensajes de error unificados (`utils/mensajes_error.dart`); avatar placeholder externo eliminado; `build.gradle.kts` con firma release condicional.
 
-## 10.7 Sugerencias de próximos pasos
+## 10.7 Cambios aplicados el 11/09/2026 (segunda tanda)
+
+- Modo claro/oscuro con `AppColors` y `ThemeController`; banners y avisos adaptativos.
+- Pestaña **Chat CRM** (Wapi) para roles comerciales/admin, en lugar del botón que abría la web con SSO por `app_uid` (ese puente sigue existiendo en el servidor; ver S1/S2). Envío construido pero apagado (`WAPI_ENVIO`).
+- Campana del Dashboard funcional: centro de notificaciones en SQLite (`notificaciones`, v5).
+- Historial de reservas con búsqueda (propias o todas si admin).
+- Auditorías sin conexión (cola `auditoria` con fotos) y catálogos en caché.
+- GitHub Actions: APK de debug como pre-release en la rama de trabajo.
+
+## 10.8 Sugerencias de próximos pasos
 
 1. Validar el JWT de Supabase en los endpoints PHP que hoy confían en `actor_id` o `empleado_id` (S1, S2). El helper `mfa/_bearer.php` ya hace exactamente eso y puede reutilizarse.
 2. Añadir `getPublicUrl` en el servicio de PDF de rutas (F1).

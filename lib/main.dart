@@ -15,6 +15,8 @@ import 'services/connectivity_service.dart';
 import 'services/offline_service.dart';
 import 'services/sync_service.dart';
 import 'services/theme_controller.dart';
+import 'services/notificaciones_service.dart';
+import 'services/chat_service.dart';
 import 'package:workmanager/workmanager.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -121,6 +123,7 @@ void main() async {
   }
 
   await ThemeController.instance.cargar();
+  await ChatConfig.instance.cargar();
 
   runApp(MecsaOpsApp(firebaseAvailable: firebaseAvailable));
 }
@@ -147,6 +150,12 @@ class MecsaOpsApp extends StatelessWidget {
         ),
         ChangeNotifierProvider<ThemeController>.value(
           value: ThemeController.instance,
+        ),
+        ChangeNotifierProvider<NotificacionesService>.value(
+          value: NotificacionesService.instance,
+        ),
+        ChangeNotifierProvider<ChatConfig>.value(
+          value: ChatConfig.instance,
         ),
       ],
       child: Consumer<ThemeController>(

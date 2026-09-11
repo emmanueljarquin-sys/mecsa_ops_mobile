@@ -19,7 +19,7 @@ class LocalDb {
   static final LocalDb instance = LocalDb._();
 
   static const String dbName = 'mecsa_ops_local.db';
-  static const int dbVersion = 4;
+  static const int dbVersion = 5;
 
   Database? _db;
   Future<Database>? _opening;
@@ -51,6 +51,7 @@ class LocalDb {
     await _createCacheTable(db);
     await _createOfflineTables(db);
     await _createVehiculosTable(db);
+    await _createNotificacionesTable(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -59,6 +60,26 @@ class LocalDb {
     if (oldVersion < 2) await _createCacheTable(db);
     if (oldVersion < 3) await _createOfflineTables(db);
     if (oldVersion < 4) await _createVehiculosTable(db);
+    if (oldVersion < 5) await _createNotificacionesTable(db);
+  }
+
+  /// v5: centro de notificaciones (campana del Dashboard).
+  Future<void> _createNotificacionesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS notificaciones (
+        id      INTEGER PRIMARY KEY AUTOINCREMENT,
+        usuario TEXT NOT NULL,
+        titulo  TEXT NOT NULL,
+        cuerpo  TEXT NOT NULL,
+        tipo    TEXT NOT NULL,
+        data    TEXT,
+        clave   TEXT,
+        ts_ms   INTEGER NOT NULL,
+        leida   INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_notif_usuario ON notificaciones(usuario, ts_ms DESC)');
   }
 
   /// v4: vehículos personales del empleado (para iniciar visitas sin red).

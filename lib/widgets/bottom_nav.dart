@@ -14,28 +14,35 @@ class BottomNav extends StatelessWidget {
       onDestinationSelected: (index) {
         provider.setIndex(index);
       },
-      destinations: const [
-        NavigationDestination(
+      destinations: [
+        const NavigationDestination(
           icon: Icon(Icons.dashboard_outlined),
           selectedIcon: Icon(Icons.dashboard),
           label: 'Inicio',
         ),
-        NavigationDestination(
+        const NavigationDestination(
           icon: Icon(Icons.car_rental_outlined),
           selectedIcon: Icon(Icons.car_rental),
           label: 'Flotilla',
         ),
-        NavigationDestination(
+        const NavigationDestination(
           icon: Icon(Icons.monetization_on_outlined),
           selectedIcon: Icon(Icons.monetization_on),
           label: 'Viáticos',
         ),
-        NavigationDestination(
+        const NavigationDestination(
           icon: Icon(Icons.map_outlined),
           selectedIcon: Icon(Icons.map),
           label: 'Visitas',
         ),
-        NavigationDestination(
+        // Chat CRM (WhatsApp): solo roles con acceso.
+        if (provider.puedeVerChat)
+          const NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble),
+            label: 'Chat',
+          ),
+        const NavigationDestination(
           icon: Icon(Icons.person_outline),
           selectedIcon: Icon(Icons.person),
           label: 'Perfil',

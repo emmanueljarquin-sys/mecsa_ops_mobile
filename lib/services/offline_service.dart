@@ -439,6 +439,9 @@ class OfflineService extends ChangeNotifier {
       case 'visita_fin':
         await _subirVisitaFin(op);
         break;
+      case 'auditoria':
+        await _subirAuditoria(op);
+        break;
       default:
         throw 'Tipo desconocido: ${op['type']}';
     }
@@ -644,6 +647,89 @@ class OfflineService extends ChangeNotifier {
     if (body['success'] != true) {
       throw (body['error'] ?? 'Error al finalizar visita').toString();
     }
+  }
+
+  // ── Auditorías ───────────────────────────────────────────────────────────
+  /// Auditoría de vehículo creada sin conexión. `record` trae `cabecera`
+  /// (insert de flotilla.auditorias sin fotos), `items` (inserts de
+  /// auditoria_items sin auditoria_id) y `detalle_notas`. Las fotos van en
+  /// `photos` con claves `general_N`, `item_<slug>_N` y `detalle_N`.
+  Future<void> _subirAuditoria(Map<String, dynamic> op) async {
+    final record = Map<String, dynamic>.from(op['record']);
+    final photos = (op['photos'] as Map?)?.cast<String, String>() ?? {};
+
+    Future<String> subir(String localPath) async {
+      final ext = localPath.contains('.') ? localPath.split('.').last : 'jpg';
+      final path = 'auditorias/offline_${_uuid.v4()}.$ext';
+      await _sb.storage
+          .from('fotos_registro_vehiculos')
+          .upload(path, File(localPath), fileOptions: const FileOptions(upsert: true))
+          .timeout(const Duration(seconds: 40));
+      return _sb.storage.from('fotos_registro_vehiculos').getPublicUrl(path);
+    }
+
+    final keys = photos.keys.toList()..sort();
+    final cabecera = Map<String, dynamic>.from(record['cabecera'] as Map);
+    final items = (record['items'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final notas = (record['detalle_notas'] as List? ?? []).map((e) => e?.toString()).toList();
+
+    // Fotos generales
+    final generales = <String>[...(cabecera['fotos'] as List? ?? []).map((e) => e.toString())];
+    for (final k in keys.where((k) => k.startsWith('general_'))) {
+      generales.add(await subir(photos[k]!));
+    }
+    cabecera['fotos'] = generales;
+
+    // Fotos de detalle con nota
+    final detalle = <Map<String, dynamic>>[
+      ...(cabecera['fotos_detalle'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)),
+    ];
+    final detKeys = keys.where((k) => k.startsWith('detalle_')).toList();
+    for (int i = 0; i < detKeys.length; i++) {
+      final url = await subir(photos[detKeys[i]]!);
+      final idx = int.tryParse(detKeys[i].substring('detalle_'.length)) ?? i;
+      final nota = idx < notas.length ? notas[idx] : null;
+      detalle.add({'url': url, if (nota != null && nota.isNotEmpty) 'nota': nota});
+    }
+    cabecera['fotos_detalle'] = detalle;
+
+    // Fotos por ítem
+    for (final it in items) {
+      final slug = it['item_slug'].toString();
+      final fotos = <String>[...(it['fotos'] as List? ?? []).map((e) => e.toString())];
+      for (final k in keys.where((k) => k.startsWith('item_${slug}_'))) {
+        fotos.add(await subir(photos[k]!));
+      }
+      it['fotos'] = fotos;
+    }
+
+    // Idempotencia: si ya subió (falló tras el insert), no duplicar.
+    final localId = op['localId']?.toString();
+    if (localId != null && await resolverId(localId) != null) return;
+
+    final inserted = await _sb
+        .schema('flotilla')
+        .from('auditorias')
+        .insert(cabecera)
+        .select('id')
+        .single()
+        .timeout(const Duration(seconds: 40));
+    final auditoriaId = inserted['id'].toString();
+    op['remoteId'] = auditoriaId;
+    if (localId != null) await _mapearId(localId, auditoriaId);
+
+    if (items.isNotEmpty) {
+      for (final it in items) {
+        it['auditoria_id'] = auditoriaId;
+      }
+      await _sb.schema('flotilla').from('auditoria_items').insert(items).timeout(const Duration(seconds: 40));
+    }
+    await _sb
+        .schema('flotilla')
+        .rpc('recompute_auditoria', params: {'p_auditoria_id': auditoriaId})
+        .timeout(const Duration(seconds: 30));
   }
 
   @override

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/app_provider.dart';
 import '../services/connectivity_service.dart';
+import '../widgets/offline_notice.dart';
 import '../services/offline_service.dart';
 import '../theme/app_theme.dart';
 import 'map_picker_screen.dart';
@@ -286,28 +287,10 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
 
               // Las reservas requieren conexión (se valida disponibilidad y
               // choques en el servidor). Sin internet, el botón se desactiva.
-              if (!context.watch<ConnectivityService>().isOnline)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.wifi_off, color: Colors.red.shade700),
-                      const SizedBox(width: 10),
-                      const Expanded(
-                        child: Text(
-                          'Sin conexión a internet. Las reservas solo se pueden crear con conexión.',
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              const OfflineNotice(
+                permiteContinuar: false,
+                texto: 'Sin conexión a internet. Las reservas solo se pueden crear con conexión.',
+              ),
 
               SizedBox(
                 width: double.infinity,

@@ -48,7 +48,7 @@ La clasificación vive en `_clasificarErrorSesion()`: `AuthRetryableFetchExcepti
 
 ## 8.1 Qué se persiste y dónde
 
-Todo vive en la base SQLite `mecsa_ops_local.db` ([local_db.dart](../lib/services/local_db.dart), versión 4). Las fotos pendientes se copian a `<documentos de la app>/offline_photos/<uuid>.<ext>`.
+Todo vive en la base SQLite `mecsa_ops_local.db` ([local_db.dart](../lib/services/local_db.dart), versión 5). Las fotos pendientes se copian a `<documentos de la app>/offline_photos/<uuid>.<ext>`.
 
 | Tabla | Qué guarda | Quién la escribe |
 |-------|------------|------------------|
@@ -59,6 +59,7 @@ Todo vive en la base SQLite `mecsa_ops_local.db` ([local_db.dart](../lib/service
 | `cache` (`liq_empleados`, `liq_proyectos`) | Personal para "personal incluido" y los 100 proyectos más recientes, para crear liquidaciones sin conexión. Se refrescan en `fetchData()` y en la copia diaria | `LiquidacionesService` |
 | `vehiculos` | Vehículos personales del empleado (`visitas.vehiculos_personales`), sobrescritos en cada sincronización. Permiten iniciar visitas sin red | `VehiculosLocal` (v4) |
 | `id_map` | `local-<uuid>` → id real del servidor, para operaciones encadenadas | `OfflineService` |
+| `notificaciones` | Centro de notificaciones de la campana (ver [doc 12](12-chat-crm.md)) | `NotificacionesService` (v5) |
 | `app_log` | Log de diagnóstico | `AppLogger` |
 
 La cola de versiones anteriores (`SharedPreferences`, clave `offline_queue_v1`) se migra a `offline_queue` la primera vez que arranca `OfflineService.init()` y se borra.
@@ -68,7 +69,7 @@ Cada operación en la cola (`payload`) tiene esta forma:
 ```json
 {
   "id": "uuid",
-  "type": "registro_vehiculo | factura | liquidacion | visita_crear | visita_inicio | visita_waypoints | visita_fin",
+  "type": "registro_vehiculo | factura | liquidacion | visita_crear | visita_inicio | visita_waypoints | visita_fin | auditoria",
   "record": { "...campos a insertar..." },
   "photos": { "frente": "/ruta/local.jpg", "kilometraje": "/ruta/local2.jpg" },
   "children": [ { "record": {...}, "photos": { "documento": "/ruta.jpg" } } ],
@@ -98,6 +99,7 @@ Una visita o liquidación creada sin conexión recibe un id `local-<uuid>` (`Off
 | `visita_crear` | `VisitaFormScreen` → `AppProvider.createVisita` | Sin conexión al registrar una visita desde el formulario (fotos incluidas) |
 | `visita_inicio` | `VisitaInicioScreen` → `startVisitaV2` | Sin conexión al iniciar una visita "en ruta"; devuelve un id local y el viaje sigue normal |
 | `visita_waypoints` | `updateVisitaWaypointsV2` | Sin conexión los waypoints solo se guardan en caché; viajan completos con `visita_fin` |
+| `auditoria` | `AuditoriaFormScreen` | Sin conexión al guardar una auditoría: cabecera, ítems y todas las fotos (generales, por ítem y de detalle con nota) se encolan; al subir: fotos → cabecera → ítems → `recompute_auditoria`. Rúbrica y vehículos del formulario en caché; la lista muestra cuántas están pendientes |
 | `visita_fin` | `VisitaInicioScreen` → `finishVisitaV2` | Sin conexión (o visita con id local). El kilometraje y el monto los calcula `finish_visita.php` al subir |
 
 **Reservas: nunca se encolan.** Crear una reserva exige validar disponibilidad y choques de horario contra el servidor en el momento, así que `createReservation()` rechaza sin conexión y el formulario desactiva el botón con un aviso rojo. Lo que sí funciona sin red es **ver** las reservas (tabla `reservas`) y **registrar salida/entrada** de una aprobada (se encola `registro_vehiculo`).

@@ -8,6 +8,7 @@ import '../services/liquidaciones_service.dart';
 import '../services/offline_service.dart';
 import '../services/liquidaciones_local.dart';
 import '../services/connectivity_service.dart';
+import '../widgets/offline_notice.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../utils/num_parse.dart';
@@ -748,8 +749,12 @@ class _LiquidacionFormScreenState extends State<LiquidacionFormScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Aviso de modo sin conexión
-                    if (!context.watch<ConnectivityService>().isOnline)
-                      _AvisoSinConexion(esNueva: widget.liquidacion == null),
+                    OfflineNotice(
+                      permiteContinuar: widget.liquidacion == null,
+                      texto: widget.liquidacion == null
+                          ? 'Sin conexión: esta liquidación se guardará en el teléfono y quedará pendiente de subir hasta que haya internet. El personal y los proyectos mostrados son los últimos guardados.'
+                          : 'Sin conexión: editar una liquidación existente requiere internet.',
+                    ),
                     // Información General
                     _SectionCard(
                       title: 'Información General',
@@ -1427,43 +1432,5 @@ class _FacturaDialogState extends State<_FacturaDialog> {
         if (mounted) setState(() => _isUploading = false);
       }
     }
-  }
-}
-
-
-/// Banner que avisa que el formulario está trabajando sin conexión.
-class _AvisoSinConexion extends StatelessWidget {
-  final bool esNueva;
-  const _AvisoSinConexion({required this.esNueva});
-
-  @override
-  Widget build(BuildContext context) {
-    final Color fondo = esNueva ? Colors.orange.shade50 : Colors.red.shade50;
-    final Color borde = esNueva ? Colors.orange.shade300 : Colors.red.shade200;
-    final Color texto = esNueva ? Colors.orange.shade900 : Colors.red.shade900;
-    final Color icono = esNueva ? Colors.orange.shade800 : Colors.red.shade700;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: fondo,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: borde),
-      ),
-      child: Row(
-        children: [
-          Icon(esNueva ? Icons.cloud_off : Icons.wifi_off, color: icono),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              esNueva
-                  ? 'Sin conexión: esta liquidación se guardará en el teléfono y quedará pendiente de subir hasta que haya internet. El personal y los proyectos mostrados son los últimos guardados.'
-                  : 'Sin conexión: editar una liquidación existente requiere internet.',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: texto),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

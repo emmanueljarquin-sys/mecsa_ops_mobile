@@ -8,6 +8,8 @@ import 'package:provider/provider.dart';
 import '../../providers/app_provider.dart';
 import '../../models/auditoria.dart';
 import '../../services/auditoria_service.dart';
+import '../../services/offline_service.dart';
+import '../../widgets/offline_notice.dart';
 
 class AuditoriaFormScreen extends StatefulWidget {
   const AuditoriaFormScreen({super.key});
@@ -161,10 +163,73 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
 
   void _back() => setState(() => _step--);
 
+  /// Sin conexión: encola la auditoría con sus fotos locales. Se sube sola
+  /// (fotos → cabecera → ítems → recálculo) cuando vuelva el internet.
+  Future<void> _guardarSinConexion(AppProvider p) async {
+    final cab = Auditoria(
+      vehiculoId: _vehiculoId,
+      auditorId: p.currentEmployeeId,
+      fechaAuditoria: _fechaAuditoria,
+      kilometraje: int.tryParse(_kmCtrl.text.trim()),
+      fechaUltimoCambioAceite: _fechaAceite,
+      fechaDekra: _fechaDekra,
+      fechaVencPesoDim: _fechaPesoDim,
+      fechaVencExtintor: _fechaExtintor,
+      numTarjetaCirculacion: _tarjetaCtrl.text.trim().isEmpty ? null : _tarjetaCtrl.text.trim(),
+      encargadoCamion: _encargadoCtrl.text.trim().isEmpty ? null : _encargadoCtrl.text.trim(),
+      tipoVehiculo: _vehSel?['type']?.toString(),
+      esPesado: _esPesado,
+      estado: 'Completada',
+      observacionesGenerales: _obsCtrl.text.trim().isEmpty ? null : _obsCtrl.text.trim(),
+      firmaConductor: _conductorCtrl.text.trim().isEmpty ? null : _conductorCtrl.text.trim(),
+      firmaCoordinador: _coordinadorCtrl.text.trim().isEmpty ? null : _coordinadorCtrl.text.trim(),
+      fotos: const [],
+      fotosDetalle: const [],
+    );
+    final photos = <String, String>{};
+    for (int i = 0; i < _fotos.length; i++) {
+      photos['general_$i'] = _fotos[i].path;
+    }
+    for (final it in _items) {
+      final files = _itemFotos[it.itemSlug] ?? [];
+      for (int i = 0; i < files.length; i++) {
+        photos['item_${it.itemSlug}_$i'] = files[i].path;
+      }
+    }
+    for (int i = 0; i < _detalleFotos.length; i++) {
+      photos['detalle_$i'] = _detalleFotos[i].file.path;
+    }
+    final localId = OfflineService.instance.nuevoIdLocal();
+    await OfflineService.instance.enqueue(
+      type: 'auditoria',
+      localId: localId,
+      record: {
+        'cabecera': cab.toInsert(),
+        'items': _items.map((it) => it.toInsert('')..remove('auditoria_id')).toList(),
+        'detalle_notas': _detalleFotos.map((d) => d.nota.text.trim()).toList(),
+        'vehiculo_id': _vehiculoId,
+      },
+      photos: photos,
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Auditoría guardada sin conexión. Se subirá automáticamente cuando haya internet.'),
+        backgroundColor: Colors.orange,
+      ));
+      Navigator.pop(context, true);
+    }
+  }
+
   Future<void> _guardar() async {
     setState(() => _saving = true);
     try {
       final p = Provider.of<AppProvider>(context, listen: false);
+
+      // ── SIN CONEXIÓN: encolar con fotos locales ──
+      if (!await OfflineService.instance.hayConexion()) {
+        await _guardarSinConexion(p);
+        return;
+      }
 
       // 1) Fotos generales
       List<String> urls = [];
@@ -261,11 +326,19 @@ class _AuditoriaFormScreenState extends State<AuditoriaFormScreen> {
                     Expanded(
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.all(16),
-                        child: _step == 0
-                            ? _paso1()
-                            : _step == 1
-                                ? _paso2()
-                                : _paso3(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const OfflineNotice(
+                              texto: 'Sin conexión: puedes completar la auditoría. Se guardará en el teléfono con sus fotos y se subirá sola cuando haya internet.',
+                            ),
+                            _step == 0
+                                ? _paso1()
+                                : _step == 1
+                                    ? _paso2()
+                                    : _paso3(),
+                          ],
+                        ),
                       ),
                     ),
                     _bottomBar(),

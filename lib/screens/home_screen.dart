@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cached_image.dart';
 import '../widgets/animated_tabs.dart';
+import '../services/notificaciones_service.dart';
+import 'notifications_screen.dart';
+import 'chat_list_screen.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -153,6 +156,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Notificación recibida con app EN PRIMER PLANO
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       final data = message.data;
+      // Guardar en la campana (centro de notificaciones).
+      NotificacionesService.instance.agregar(
+        titulo: message.notification?.title ??
+            (data['tipo'] == 'pago_kilometraje' ? 'Pago de kilometraje confirmado' : 'Notificación'),
+        cuerpo: message.notification?.body ??
+            (data['tipo'] == 'pago_kilometraje'
+                ? 'Tu pago de kilometraje fue confirmado. Revisa el comprobante en tu visita.'
+                : data.toString()),
+        tipo: data['tipo'] == 'pago_kilometraje' ? 'visita' : 'info',
+        data: Map<String, dynamic>.from(data),
+      );
       if (data['tipo'] == 'pago_kilometraje' && mounted) {
         _showPagoBanner(data['visita_id']);
       }
@@ -338,12 +352,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     // Mapeo de pantallas (Lazy loading básico)
+    // Chat CRM solo para roles con acceso (se inserta antes de Perfil).
     final List<Widget> screens = [
       const DashboardTab(),
       const FlotillaScreen(),
       const ViaticosScreen(),
       const VisitasScreen(),
-      const ProfileScreen(), // Nueva pantalla
+      if (provider.puedeVerChat) const ChatListScreen(),
+      const ProfileScreen(),
     ];
 
     return Scaffold(
@@ -454,27 +470,44 @@ class DashboardTab extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                 ],
-                Stack(
-                  children: [
-                    const Icon(
-                      Icons.notifications_outlined,
-                      size: 28,
-                      color: Colors.grey,
+                Consumer<NotificacionesService>(
+                  builder: (context, notif, _) => IconButton(
+                    tooltip: 'Notificaciones',
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
                     ),
-                    if (pendientes > 0)
-                      Positioned(
-                        right: 0,
-                        top: 0,
-                        child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
+                    icon: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(
+                          notif.noLeidas > 0 ? Icons.notifications_active : Icons.notifications_outlined,
+                          size: 28,
+                          color: notif.noLeidas > 0
+                              ? Theme.of(context).colorScheme.primary
+                              : AppColors.of(context).textSecondary,
                         ),
-                      ),
-                  ],
+                        if (notif.noLeidas > 0 || pendientes > 0)
+                          Positioned(
+                            right: -4,
+                            top: -4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              constraints: const BoxConstraints(minWidth: 16),
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                borderRadius: BorderRadius.all(Radius.circular(10)),
+                              ),
+                              child: Text(
+                                notif.noLeidas > 0 ? '${notif.noLeidas}' : '',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 16),
                 PopupMenuButton<String>(
@@ -673,34 +706,6 @@ class DashboardTab extends StatelessWidget {
             ],
 
             const SizedBox(height: 24),
-
-            // 3.5 NUEVA ZONA: CHAT CRM (Solo Admin y Vendedor)
-            if (emp != null && (() {
-              final r = (emp['rol'] ?? '').toString().toLowerCase();
-              return r.contains('admin') || r.contains('vendedor') || r.contains('ventas') || r.contains('asesor');
-            })())
-              Padding(
-                padding: const EdgeInsets.only(bottom: 24.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _MainActionButton(
-                        icon: Icons.chat_bubble_outline,
-                        label: "CHAT CRM",
-                        color: const Color(0xFF25D366), // Color de WhatsApp
-                        textColor: Colors.white,
-                        onTap: () async {
-                          // SSO Bridge: login.php?app_uid=...&embed=1
-                          final url = Uri.parse("https://grupomecsa.net/ops/login.php?app_uid=${provider.user!.id}&embed=1");
-                          if (await canLaunchUrl(url)) {
-                            await launchUrl(url, mode: LaunchMode.inAppWebView);
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
 
             // 4. Mis Viáticos Card
             _DashboardCard(
